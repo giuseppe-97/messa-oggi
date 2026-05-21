@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Liturgia" />
+  <title>Liturgia del Giorno</title>
+  <style>
+    /* Reset e base */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #fdfaf5;          /* carta leggermente avorio */
+      --testo: #1a1a1a;
+      --accento: #7a5c3a;     /* marrone caldo */
+      --secondario: #9e8b78;
+      --tab-bg: #f0ebe3;
+      --tab-active: #7a5c3a;
+      --font-corpo: Georgia, 'Times New Roman', serif;
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--testo);
+      font-family: var(--font-corpo);
+      /* padding-top sicuro per la Dynamic Island/notch iPhone */
+      padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 20px) env(safe-area-inset-left, 16px);
+      min-height: 100dvh;
+    }
+
+    /* Barra di selezione sezione */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 24px;
+      background: var(--tab-bg);
+      border-radius: 12px;
+      padding: 5px;
+      font-family: var(--font-ui);
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px 4px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondario);
+      cursor: pointer;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .tab.attivo {
+      background: var(--tab-active);
+      color: #fff;
+    }
+
+    /* Data */
+    .data-oggi {
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--secondario);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    /* Titolo */
+    h1 {
+      font-size: 22px;
+      font-weight: normal;
+      color: var(--accento);
+      margin-bottom: 20px;
+      line-height: 1.3;
+    }
+
+    /* Testo liturgico */
+    #contenuto {
+      font-size: 18px;
+      line-height: 1.75;
+      color: var(--testo);
+    }
+
+    /* Stile per il testo estratto: preserviamo i paragrafi */
+    #contenuto p {
+      margin-bottom: 1em;
+    }
+
+    #contenuto strong, #contenuto b {
+      font-weight: bold;
+      color: var(--accento);
+    }
+
+    /* Versetti in maiuscolo o etichette tipo "V." "R." "Ant." */
+    #contenuto em {
+      font-style: italic;
+      color: var(--secondario);
+    }
+
+    /* Stato di caricamento */
+    .stato {
+      font-family: var(--font-ui);
+      font-size: 15px;
+      color: var(--secondario);
+      text-align: center;
+      padding: 40px 0;
+    }
+
+    .errore {
+      color: #b94a4a;
+      font-size: 14px;
+      font-family: var(--font-ui);
+      line-height: 1.5;
+    }
+
+    /* Link "apri originale" discreto */
+    .link-originale {
+      display: block;
+      margin-top: 32px;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--secondario);
+      text-decoration: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Selezione sezione -->
+  <div class="tabs">
+    <div class="tab attivo" data-sezione="vespri" onclick="cambiaSezione(this)">Vespri</div>
+    <div class="tab" data-sezione="messa" onclick="cambiaSezione(this)">Messa</div>
+    <div class="tab" data-sezione="letture" onclick="cambiaSezione(this)">Letture</div>
+  </div>
+
+  <p class="data-oggi" id="data-oggi"></p>
+  <h1 id="titolo">Caricamento…</h1>
+  <div id="contenuto"><p class="stato">⏳ Sto recuperando il testo…</p></div>
+  <a class="link-originale" id="link-originale" href="#" target="_blank">Apri sul sito originale ↗</a>
+
+  <script>
+    // ─── CONFIGURAZIONE ───────────────────────────────────────────────
+    // Sostituisci con il tuo URL Cloudflare Worker dopo il deploy
+    const PROXY = "https://liturgia-proxy.TUONOME.workers.dev";
+
+    // ─── STATO ────────────────────────────────────────────────────────
+    let sezioneAttiva = "vespri";
+
+    // ─── UTILITÀ DATA ─────────────────────────────────────────────────
+    function dataOggi() {
+      // Restituisce la data in formato YYYYMMDD (fuso italiano)
+      const ora = new Date();
+      const anno = ora.getFullYear();
+      const mese = String(ora.getMonth() + 1).padStart(2, "0");
+      const giorno = String(ora.getDate()).padStart(2, "0");
+      return `${anno}${mese}${giorno}`;
+    }
+
+    function dataFormattata() {
+      return new Date().toLocaleDateString("it-IT", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric"
+      });
+    }
+
+    // ─── URL PER OGNI SEZIONE ─────────────────────────────────────────
+    function urlPerSezione(sezione) {
+      const data = dataOggi();
+      if (sezione === "vespri")
+        return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${data}&ora=vespri`;
+      if (sezione === "messa")
+        return `https://www.chiesacattolica.it/liturgia-del-giorno/?data-liturgia=${data}`;
+      if (sezione === "letture")
+        return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${data}&ora=ufficio-delle-letture`;
+    }
+
+    // ─── FETCH TRAMITE PROXY ──────────────────────────────────────────
+    async function scaricaHTML(url) {
+      const risposta = await fetch(`${PROXY}?url=${encodeURIComponent(url)}`);
+      if (!risposta.ok) throw new Error(`HTTP ${risposta.status}`);
+      return risposta.text();
+    }
+
+    // ─── ESTRAZIONE TESTO ─────────────────────────────────────────────
+    function estraiContenuto(html, sezione) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+
+      // Rimuovi elementi inutili dal DOM parsed
+      const daRimuovere = [
+        "script", "style", "noscript", "header", "footer", "nav",
+        ".breadcrumb", ".share", ".sidebar", "figure", "img",
+        ".liturgia-nav", ".tabs-liturgia", ".grandezza-testo",
+        "[class*='condividi']", "[class*='social']", "[class*='menu']",
+        "[class*='banner']", ".cookie", "#cookie",
+      ];
+      daRimuovere.forEach(sel => {
+        doc.querySelectorAll(sel).forEach(el => el.remove());
+      });
+
+      // Il contenuto liturgico è dentro un div con classe che contiene "liturgia" o "entry-content"
+      // Proviamo i selettori in ordine di preferenza
+      const selettori = [
+        ".liturgia-content",
+        ".entry-content",
+        "article .content",
+        "article",
+        ".post-content",
+        "main",
+      ];
+
+      let blocco = null;
+      for (const sel of selettori) {
+        blocco = doc.querySelector(sel);
+        if (blocco) break;
+      }
+
+      if (!blocco) return null;
+
+      // Per l'Ufficio delle letture: estrai solo PRIMA e SECONDA LETTURA
+      if (sezione === "letture") {
+        return estraiLetture(blocco);
+      }
+
+      // Per Vespri e Messa: testo completo, pulito
+      return pulisciHTML(blocco.innerHTML);
+    }
+
+    // Estrae solo i blocchi "PRIMA LETTURA" e "SECONDA LETTURA"
+    function estraiLetture(blocco) {
+      const html = blocco.innerHTML;
+      // Cerca i blocchi che iniziano con PRIMA LETTURA / SECONDA LETTURA
+      // Il sito li segna tipicamente con tag <strong> o <h3> o testo maiuscolo
+      const tutto = blocco.innerText || blocco.textContent;
+
+      // Strategia: troviamo i paragrafi figli e filtriamo quelli rilevanti
+      const elementi = Array.from(blocco.children);
+      let risultato = "";
+      let cattura = false;
+      let sezioniTrovate = 0;
+
+      for (const el of elementi) {
+        const testo = el.textContent.trim().toUpperCase();
+        // Inizia a catturare quando troviamo "PRIMA LETTURA" o "SECONDA LETTURA"
+        if (testo.includes("PRIMA LETTURA") || testo.includes("SECONDA LETTURA")) {
+          cattura = true;
+          sezioniTrovate++;
+          risultato += el.outerHTML;
+          continue;
+        }
+        // Smetti di catturare quando troviamo un'altra sezione principale (es. RESPONSORIO, ORAZIONE…)
+        if (cattura && (
+          testo.includes("RESPONSORIO") ||
+          testo.includes("TE DEUM") ||
+          testo.includes("ORAZIONE") ||
+          testo.includes("VERSETTO") ||
+          (testo.length < 60 && testo === testo.toUpperCase() && testo.length > 5 && sezioniTrovate > 0)
+        )) {
+          // Se abbiamo già due letture, fermiamoci
+          if (sezioniTrovate >= 2) break;
+          cattura = false;
+        }
+        if (cattura) risultato += el.outerHTML;
+      }
+
+      return risultato ? pulisciHTML(risultato) : "<p class='errore'>Non ho trovato le sezioni Letture. Il sito potrebbe aver cambiato struttura.</p>";
+    }
+
+    // Pulizia HTML: rimuove attributi di stile, classi, link interni
+    function pulisciHTML(html) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+      const root = doc.querySelector("div");
+
+      // Rimuovi attributi che portano stili o classi CEI
+      root.querySelectorAll("*").forEach(el => {
+        el.removeAttribute("style");
+        el.removeAttribute("class");
+        el.removeAttribute("id");
+        el.removeAttribute("data-wow-delay");
+        // Trasforma i link in testo semplice (no link cliccabili interni)
+        if (el.tagName === "A" && el.href && !el.href.startsWith("mailto")) {
+          el.removeAttribute("href");
+        }
+      });
+
+      // Rimuovi div vuoti
+      root.querySelectorAll("div:empty, p:empty, span:empty").forEach(el => el.remove());
+
+      return root.innerHTML;
+    }
+
+    // Estrai il titolo della pagina
+    function estraiTitolo(html) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      // Cerca h1 nella pagina
+      const h1 = doc.querySelector("h1");
+      if (h1) return h1.textContent.trim();
+      // Fallback: titolo della pagina
+      const title = doc.querySelector("title");
+      if (title) return title.textContent.split("-")[0].trim();
+      return "Liturgia del Giorno";
+    }
+
+    // ─── CARICAMENTO ──────────────────────────────────────────────────
+    async function carica(sezione) {
+      document.getElementById("titolo").textContent = "Caricamento…";
+      document.getElementById("contenuto").innerHTML = '<p class="stato">⏳ Sto recuperando il testo…</p>';
+
+      const url = urlPerSezione(sezione);
+      document.getElementById("link-originale").href = url;
+
+      try {
+        const html = await scaricaHTML(url);
+        const titolo = estraiTitolo(html);
+        const contenuto = estraiContenuto(html, sezione);
+
+        document.getElementById("titolo").textContent = titolo;
+
+        if (contenuto && contenuto.trim().length > 100) {
+          document.getElementById("contenuto").innerHTML = contenuto;
+        } else {
+          document.getElementById("contenuto").innerHTML =
+            `<p class="errore">⚠️ Non ho trovato il testo. La struttura del sito potrebbe essere cambiata.<br><br>
+            <a href="${url}" target="_blank" style="color:#7a5c3a">Apri la pagina originale →</a></p>`;
+        }
+      } catch (err) {
+        document.getElementById("titolo").textContent = "Errore";
+        document.getElementById("contenuto").innerHTML =
+          `<p class="errore">⚠️ Impossibile caricare il contenuto.<br>
+          Controlla la connessione o <a href="${urlPerSezione(sezione)}" target="_blank" style="color:#7a5c3a">apri il sito originale</a>.<br><br>
+          Dettaglio: ${err.message}</p>`;
+      }
+    }
+
+    // ─── CAMBIO SEZIONE ───────────────────────────────────────────────
+    function cambiaSezione(tabEl) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("attivo"));
+      tabEl.classList.add("attivo");
+      sezioneAttiva = tabEl.dataset.sezione;
+      carica(sezioneAttiva);
+    }
+
+    // ─── AVVIO ────────────────────────────────────────────────────────
+    document.getElementById("data-oggi").textContent = dataFormattata();
+    carica(sezioneAttiva);
+  </script>
+</body>
+</html>
