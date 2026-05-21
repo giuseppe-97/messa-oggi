@@ -8,349 +8,608 @@
   <meta name="apple-mobile-web-app-title" content="Liturgia" />
   <title>Liturgia del Giorno</title>
   <style>
-    /* Reset e base */
+    /* ─── VARIABILI E RESET ─────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #fdfaf5;          /* carta leggermente avorio */
-      --testo: #1a1a1a;
-      --accento: #7a5c3a;     /* marrone caldo */
-      --secondario: #9e8b78;
-      --tab-bg: #f0ebe3;
-      --tab-active: #7a5c3a;
-      --font-corpo: Georgia, 'Times New Roman', serif;
-      --font-ui: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      --bg:        #fdfaf5;
+      --carta:     #f7f3ec;
+      --testo:     #1c1a17;
+      --accento:   #6b4c2a;
+      --tenue:     #a89278;
+      --tab-bg:    #ede8df;
+      --tab-on:    #6b4c2a;
+      --tab-off:   #8c7560;
+      --sep:       #d8cfbf;
+      --rientro:   1.4em;
     }
 
     body {
       background: var(--bg);
       color: var(--testo);
-      font-family: var(--font-corpo);
-      /* padding-top sicuro per la Dynamic Island/notch iPhone */
-      padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 20px) env(safe-area-inset-left, 16px);
+      /* Georgia come serif di lettura; Palatino come fallback ancora più elegante */
+      font-family: Palatino, 'Palatino Linotype', Georgia, 'Times New Roman', serif;
+      font-size: 18px;
+      line-height: 1.8;
+      /* Rispetta notch / Dynamic Island / barra inferiore di Safari */
+      padding:
+        calc(env(safe-area-inset-top, 16px) + 16px)
+        calc(env(safe-area-inset-right, 0px) + 20px)
+        calc(env(safe-area-inset-bottom, 0px) + 32px)
+        calc(env(safe-area-inset-left, 0px) + 20px);
       min-height: 100dvh;
     }
 
-    /* Barra di selezione sezione */
+    /* ─── BARRA SEZIONI ─────────────────────────────────── */
     .tabs {
       display: flex;
-      gap: 6px;
-      margin-bottom: 24px;
+      gap: 5px;
+      margin-bottom: 28px;
       background: var(--tab-bg);
-      border-radius: 12px;
-      padding: 5px;
-      font-family: var(--font-ui);
+      border-radius: 11px;
+      padding: 4px;
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
     }
-
     .tab {
       flex: 1;
       text-align: center;
-      padding: 8px 4px;
+      padding: 9px 4px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 600;
-      color: var(--secondario);
+      letter-spacing: 0.03em;
+      color: var(--tab-off);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background 0.18s, color 0.18s;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
-
     .tab.attivo {
-      background: var(--tab-active);
+      background: var(--tab-on);
       color: #fff;
+      box-shadow: 0 1px 4px rgba(107,76,42,0.25);
     }
 
-    /* Data */
-    .data-oggi {
-      font-family: var(--font-ui);
-      font-size: 12px;
-      color: var(--secondario);
+    /* ─── DATA E TITOLO ─────────────────────────────────── */
+    .meta {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      color: var(--tenue);
       margin-bottom: 6px;
     }
-
-    /* Titolo */
     h1 {
-      font-size: 22px;
+      font-size: 1.45em;
       font-weight: normal;
+      font-style: italic;
       color: var(--accento);
-      margin-bottom: 20px;
+      margin-bottom: 22px;
       line-height: 1.3;
     }
 
-    /* Testo liturgico */
+    /* ─── SEPARATORE VISIVO ─────────────────────────────── */
+    .sep { border: none; border-top: 1px solid var(--sep); margin: 22px 0; }
+
+    /* ─── TESTO LITURGICO ───────────────────────────────── */
+
+    /*
+      Strategia spaziatura: NON pesco spazi dall'HTML del sito (sono
+      codificati in classi CSS o <br> multipli che andiamo a perdere
+      durante la pulizia). Invece convertiamo ogni blocco HTML in una
+      sequenza di righe di testo strutturato, poi lo ricomponiamo noi
+      con il nostro CSS, così il risultato è indipendente dal markup
+      del sito e visivamente coerente.
+
+      Le regole di spaziatura che applichiamo:
+        - ogni <p> → margine sotto di 1em
+        - sequenze di più <br> consecutive → trattate come separatore
+          di paragrafo (margin-bottom aggiuntivo)
+        - elementi con testo in maiuscolo breve (titoletti di sezione)
+          → piccolo cap/letterspacing, colore accento, margine sopra
+        - righe che iniziano con V. R. Ant. → rientro negativo (hanging)
+    */
+
     #contenuto {
-      font-size: 18px;
-      line-height: 1.75;
-      color: var(--testo);
+      /* Nessun font ridefinito: eredita il Palatino del body */
     }
 
-    /* Stile per il testo estratto: preserviamo i paragrafi */
+    /* Paragrafi standard */
     #contenuto p {
       margin-bottom: 1em;
     }
 
+    /* Paragrafo vuoto usato come spaziatore: lo trasformiamo in
+       separazione verticale visibile invece di eliminarlo */
+    #contenuto p:empty,
+    #contenuto p.spaziatore {
+      display: block;
+      height: 0.6em;
+      margin: 0;
+    }
+
+    /* Titoletti di sezione (SALMO 23, INNO, RESPONSORIO…):
+       testo breve tutto in maiuscolo = titoletto liturgico */
+    #contenuto .titoletto {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      font-size: 0.72em;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accento);
+      margin-top: 1.8em;
+      margin-bottom: 0.4em;
+    }
+
+    /* Sottotitolo in corsivo (citazione biblica, indicazione di forma) */
+    #contenuto .sottotitolo {
+      font-style: italic;
+      color: var(--tenue);
+      font-size: 0.9em;
+      margin-bottom: 0.6em;
+    }
+
+    /* Versetti con V. R. Ant. all'inizio: hanging indent */
+    #contenuto .versetto {
+      padding-left: var(--rientro);
+      text-indent: calc(-1 * var(--rientro));
+      margin-bottom: 0.5em;
+    }
+
+    /* Antifona: leggero grigio */
+    #contenuto .ant {
+      color: var(--tenue);
+      font-style: italic;
+    }
+
+    /* Testo in grassetto dal sito: lo manteniamo ma con il colore accento */
     #contenuto strong, #contenuto b {
       font-weight: bold;
       color: var(--accento);
     }
 
-    /* Versetti in maiuscolo o etichette tipo "V." "R." "Ant." */
-    #contenuto em {
-      font-style: italic;
-      color: var(--secondario);
-    }
-
-    /* Stato di caricamento */
+    /* Stato caricamento / errore */
     .stato {
-      font-family: var(--font-ui);
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
       font-size: 15px;
-      color: var(--secondario);
+      color: var(--tenue);
       text-align: center;
-      padding: 40px 0;
+      padding: 48px 0;
     }
-
     .errore {
       color: #b94a4a;
       font-size: 14px;
-      font-family: var(--font-ui);
-      line-height: 1.5;
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
     }
+    .errore a { color: var(--accento); }
 
-    /* Link "apri originale" discreto */
-    .link-originale {
+    /* Link discreto in fondo */
+    .link-orig {
       display: block;
-      margin-top: 32px;
-      font-family: var(--font-ui);
-      font-size: 12px;
-      color: var(--secondario);
+      margin-top: 36px;
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      font-size: 11px;
+      color: var(--tenue);
       text-decoration: none;
       text-align: center;
+      letter-spacing: 0.04em;
     }
   </style>
 </head>
 <body>
 
-  <!-- Selezione sezione -->
   <div class="tabs">
-    <div class="tab attivo" data-sezione="vespri" onclick="cambiaSezione(this)">Vespri</div>
-    <div class="tab" data-sezione="messa" onclick="cambiaSezione(this)">Messa</div>
-    <div class="tab" data-sezione="letture" onclick="cambiaSezione(this)">Letture</div>
+    <div class="tab attivo" data-sez="vespri"   onclick="cambia(this)">Vespri</div>
+    <div class="tab"        data-sez="messa"    onclick="cambia(this)">Messa</div>
+    <div class="tab"        data-sez="letture"  onclick="cambia(this)">Letture</div>
   </div>
 
-  <p class="data-oggi" id="data-oggi"></p>
+  <p class="meta" id="data-oggi"></p>
   <h1 id="titolo">Caricamento…</h1>
-  <div id="contenuto"><p class="stato">⏳ Sto recuperando il testo…</p></div>
-  <a class="link-originale" id="link-originale" href="#" target="_blank">Apri sul sito originale ↗</a>
+  <hr class="sep" />
+  <div id="contenuto"><p class="stato">Recupero il testo…</p></div>
+  <a class="link-orig" id="link-orig" href="#" target="_blank">Apri sul sito originale ↗</a>
 
-  <script>
-    // ─── CONFIGURAZIONE ───────────────────────────────────────────────
-    // Sostituisci con il tuo URL Cloudflare Worker dopo il deploy
-    const PROXY = "https://yellow-king-c720.giuseppemc.workers.dev";
+<script>
+// ─── CONFIGURAZIONE ──────────────────────────────────────────────────────────
+// Inserisci qui l'URL del tuo Cloudflare Worker dopo il deploy.
+// Se stai testando con allorigins, usa: "https://api.allorigins.win/raw?url="
+// In quel caso la chiamata diventa: fetch(PROXY + encodeURIComponent(url))
+// e devi impostare PROXY_MODE = "allorigins" qui sotto.
+const PROXY      = "https://liturgia-proxy.TUONOME.workers.dev";
+const PROXY_MODE = "worker"; // "worker" oppure "allorigins"
 
-    // ─── STATO ────────────────────────────────────────────────────────
-    let sezioneAttiva = "vespri";
+// ─── UTILITÀ DATA ────────────────────────────────────────────────────────────
+function dataISO() {
+  // Produce YYYYMMDD nel fuso locale (importante: non UTC, che potrebbe
+  // essere il giorno sbagliato se sei in Italia nelle prime ore)
+  const d = new Date();
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const gg = String(d.getDate()).padStart(2, "0");
+  return `${yy}${mm}${gg}`;
+}
 
-    // ─── UTILITÀ DATA ─────────────────────────────────────────────────
-    function dataOggi() {
-      // Restituisce la data in formato YYYYMMDD (fuso italiano)
-      const ora = new Date();
-      const anno = ora.getFullYear();
-      const mese = String(ora.getMonth() + 1).padStart(2, "0");
-      const giorno = String(ora.getDate()).padStart(2, "0");
-      return `${anno}${mese}${giorno}`;
+function dataLeggibile() {
+  return new Date().toLocaleDateString("it-IT", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric"
+  });
+}
+
+// ─── URL PER SEZIONE ─────────────────────────────────────────────────────────
+function urlPerSezione(sez) {
+  const d = dataISO();
+  if (sez === "vespri")
+    return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${d}&ora=vespri`;
+  if (sez === "messa")
+    return `https://www.chiesacattolica.it/liturgia-del-giorno/?data-liturgia=${d}`;
+  if (sez === "letture")
+    return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${d}&ora=ufficio-delle-letture`;
+}
+
+// ─── FETCH TRAMITE PROXY ─────────────────────────────────────────────────────
+async function scaricaHTML(url) {
+  let proxyUrl;
+  if (PROXY_MODE === "allorigins") {
+    proxyUrl = PROXY + encodeURIComponent(url);
+  } else {
+    proxyUrl = `${PROXY}?url=${encodeURIComponent(url)}`;
+  }
+  const r = await fetch(proxyUrl);
+  if (!r.ok) throw new Error(`HTTP ${r.status} dal proxy`);
+  return r.text();
+}
+
+// ─── ESTRAZIONE E PULIZIA CONTENUTO ─────────────────────────────────────────
+
+/*
+  STRATEGIA DI ESTRAZIONE:
+  1. Parsiamo l'HTML con DOMParser.
+  2. Troviamo il blocco di contenuto principale (entry-content o equivalente).
+  3. Rimuoviamo dal DOM tutti gli elementi di contorno (nav, share, figure, ecc.).
+  4. Percorriamo i nodi uno ad uno con un walker e costruiamo una
+     rappresentazione intermedia in testo + marcatori strutturali.
+  5. Da quella rappresentazione, generiamo HTML semantico pulito che
+     il nostro CSS poi formatta correttamente.
+
+  Perché non fare solo innerHTML strip?
+  Perché le spaziature nel sito originale dipendono da classi CSS che
+  non possiamo portarci dietro. Dobbiamo REINTERPRETARE la struttura
+  e ricrearla con il nostro markup.
+*/
+
+function estraiETrasforma(html, sez) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  // Rimuovi tutto ciò che non è testo liturgico
+  [
+    "script","style","noscript","header","footer","nav",
+    "figure","img","iframe","video","audio",
+    ".breadcrumb","[class*='share']","[class*='social']",
+    "[class*='grandezza']","[class*='condividi']",
+    "[class*='stampa']","[class*='widget']",
+    "[class*='banner']","[class*='sidebar']",
+    "[class*='menu']","[class*='cookie']",
+    // I link di navigazione ore (Vespri / Lodi / ecc.)
+    ".tabs-liturgia",".liturgia-nav","ul.ore",
+    // La riga con i link A A A dimensione testo
+    ".dimensione-testo",
+    // Pulsanti "Lettura a schermo intero" ecc.
+    ".fullscreen","[class*='fullscreen']",
+  ].forEach(sel => {
+    doc.querySelectorAll(sel).forEach(el => el.remove());
+  });
+
+  // Trova il blocco principale del contenuto
+  const SELETTORI_CONTENUTO = [
+    ".entry-content",
+    ".liturgia-content",
+    "[class*='liturgia-text']",
+    "article .content",
+    "article",
+    ".post-content",
+    "main .container",
+    "main",
+  ];
+  let blocco = null;
+  for (const s of SELETTORI_CONTENUTO) {
+    blocco = doc.querySelector(s);
+    if (blocco && blocco.textContent.trim().length > 200) break;
+  }
+  if (!blocco) return erroreHTML("Blocco contenuto non trovato. Struttura del sito cambiata?");
+
+  // Per Ufficio delle letture: estrai SOLO i blocchi Prima/Seconda Lettura
+  if (sez === "letture") {
+    return estraiLetture(blocco);
+  }
+
+  // Per Vespri e Messa: trasforma tutto il contenuto
+  return trasformaInHtmlPulito(blocco);
+}
+
+// ─── TRASFORMAZIONE HTML PULITO ──────────────────────────────────────────────
+/*
+  Percorre i nodi del blocco e costruisce HTML nuovo con classi semantiche.
+  Regole principali:
+    - Sequenze di <br> multiple → paragrafo spaziatore (altezza aggiuntiva)
+    - Paragrafo con testo breve tutto maiuscolo → .titoletto
+    - Paragrafo che inizia con "V." "R." "Ant." → .versetto (con hanging)
+    - Citazioni bibliche in corsivo → .sottotitolo
+    - Tutto il resto → <p> normale
+*/
+function trasformaInHtmlPulito(blocco) {
+  // Raccogliamo i "figli logici": paragrafi e blocchi rilevanti
+  const output = [];
+  const figli = Array.from(blocco.querySelectorAll(
+    "p, h2, h3, h4, h5, h6, blockquote, div > br, div"
+  ));
+
+  // Se i selettori granulari non trovano nulla, lavoriamo sull'intero innerHTML
+  // convertendo br multipli in separatori di paragrafo
+  const testoGrezzo = blocco.innerHTML;
+
+  // Normalizza: trasforma <br><br> e varianti in separatori veri
+  let htmlNorm = testoGrezzo
+    // Due o più <br> consecutivi (con spazio/&nbsp; in mezzo) → tag speciale
+    .replace(/(<br\s*\/?>[\s\u00a0]*){2,}/gi, '</p><p class="spaziatore"></p><p>')
+    // Un singolo <br> → va bene, lo lasciamo
+    .replace(/<br\s*\/?>/gi, "<br>");
+
+  // Ora re-parsificazione semplice del risultato normalizzato
+  const doc2 = new DOMParser();
+  const frag = doc2.parseFromString(`<div>${htmlNorm}</div>`, "text/html");
+  const root = frag.querySelector("div");
+
+  // Percorri tutti i paragrafi del risultato normalizzato
+  const paragrafi = root.querySelectorAll("p, h2, h3, h4, h5, h6, li");
+  if (paragrafi.length === 0) {
+    // Fallback: restituiamo il testo grezzo con <br> preservati
+    return `<p>${testoGrezzo}</p>`;
+  }
+
+  paragrafi.forEach(el => {
+    const testo = el.textContent.trim();
+    if (!testo && !el.classList.contains("spaziatore")) {
+      // Paragrafo vuoto → spaziatore
+      output.push('<p class="spaziatore"></p>');
+      return;
+    }
+    if (el.classList.contains("spaziatore")) {
+      output.push('<p class="spaziatore"></p>');
+      return;
     }
 
-    function dataFormattata() {
-      return new Date().toLocaleDateString("it-IT", {
-        weekday: "long", day: "numeric", month: "long", year: "numeric"
-      });
+    // Determina la classe semantica
+    const testoUp = testo.toUpperCase();
+    const isTitoletto =
+      testo === testoUp &&             // tutto maiuscolo
+      testo.length < 80 &&            // breve
+      testo.length > 2 &&
+      !testo.startsWith("V.") &&
+      !testo.startsWith("R.") &&
+      !testo.startsWith("ANT.");
+
+    const isVersetto =
+      /^(V\.|R\.|Ant\.|ANT\.)/.test(testo);
+
+    const isSottotitolo =
+      /^\(/.test(testo) ||            // inizia con parentesi (citazione)
+      el.tagName === "EM" ||
+      (el.querySelector && el.querySelector("em") && testo.length < 120);
+
+    if (isTitoletto) {
+      // Puliamo il testo da eventuali tag interni, vogliamo solo testo
+      output.push(`<p class="titoletto">${pulisciTesto(el)}</p>`);
+    } else if (isVersetto) {
+      output.push(`<p class="versetto">${pulisciInline(el)}</p>`);
+    } else if (isSottotitolo) {
+      output.push(`<p class="sottotitolo">${pulisciInline(el)}</p>`);
+    } else {
+      output.push(`<p>${pulisciInline(el)}</p>`);
+    }
+  });
+
+  const risultato = output.join("\n");
+  return risultato.length > 50
+    ? risultato
+    : erroreHTML("Il testo estratto è troppo breve. Struttura del sito cambiata?");
+}
+
+// ─── ESTRAZIONE LETTURE ───────────────────────────────────────────────────────
+/*
+  Per l'Ufficio delle letture vogliamo SOLO i blocchi sotto
+  "PRIMA LETTURA" e "SECONDA LETTURA", escludendo tutto il resto.
+
+  Strategia: cerchiamo nel testo completo del blocco le occorrenze
+  di questi due titoli, poi estraiamo tutto il contenuto tra il titolo
+  trovato e il successivo titolo di sezione (RESPONSORIO, TE DEUM, ecc.)
+  o la fine del blocco.
+
+  Lavoriamo sull'HTML grezzo normalizzato (non sul DOM), perché i titoli
+  possono essere annidati in vari modi.
+*/
+function estraiLetture(blocco) {
+  // Prendiamo l'HTML interno normalizzato
+  const html = blocco.innerHTML;
+
+  // Normalizziamo: rimuoviamo tag di navigazione/condividi
+  const doc2 = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  doc2.querySelectorAll("script,style,nav,ul,a[href*='facebook'],a[href*='twitter']").forEach(e=>e.remove());
+  const testo = doc2.querySelector("div").innerHTML;
+
+  // Dividiamo il testo in righe logiche separando ai tag di blocco
+  // poi cerchiamo le sezioni PRIMA LETTURA / SECONDA LETTURA
+  const output = [];
+
+  // Markers di inizio sezione che vogliamo catturare
+  const INIZIO = /PRIMA\s+LETTURA|SECONDA\s+LETTURA/i;
+  // Markers di fine sezione (inizia una nuova sezione che NON vogliamo)
+  const FINE   = /RESPONSORIO|TE\s+DEUM|ORAZIONE\s+CONCLUSIVA|BENEDICI|INVITATORIO|LODI|VESPRI|COMPIETA|ORA\s+MEDIA/i;
+
+  // Spezziamo l'HTML per tag di blocco
+  const pezzi = testo
+    .replace(/<\/(p|div|h[1-6]|li|br)>/gi, "|||")
+    .split("|||")
+    .map(p => p.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .filter(p => p.length > 0);
+
+  // Ripetiamo però sul DOM strutturato per avere HTML (non testo piano)
+  // Strategia più robusta: lavoriamo sull'HTML normalizzato a paragrafi
+  const htmlNorm = testo
+    .replace(/(<br\s*\/?>[\s\u00a0]*){2,}/gi, '</p><p class="spaziatore"></p><p>')
+    .replace(/<br\s*\/?>/gi, "<br>");
+
+  const frag = new DOMParser().parseFromString(`<div>${htmlNorm}</div>`, "text/html");
+  const tutti = Array.from(frag.querySelectorAll("p, h2, h3, h4, h5, h6, li, div"));
+
+  let cattura      = false;   // stiamo catturando?
+  let sezioniViste = 0;       // quante sezioni lettura abbiamo trovato
+  let bufferSezione = [];     // paragrafi della sezione corrente
+
+  const salvaSezione = () => {
+    if (bufferSezione.length > 0) {
+      output.push(...bufferSezione);
+      output.push('<hr class="sep" />');
+      bufferSezione = [];
+    }
+  };
+
+  tutti.forEach(el => {
+    const testo = el.textContent.trim();
+    if (!testo && !el.classList.contains("spaziatore")) return;
+
+    // Siamo a inizio di una sezione lettura?
+    if (INIZIO.test(testo) && testo.length < 100) {
+      salvaSezione();          // salva eventuale sezione precedente
+      cattura = true;
+      sezioniViste++;
+      bufferSezione.push(`<p class="titoletto">${testo}</p>`);
+      return;
     }
 
-    // ─── URL PER OGNI SEZIONE ─────────────────────────────────────────
-    function urlPerSezione(sezione) {
-      const data = dataOggi();
-      if (sezione === "vespri")
-        return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${data}&ora=vespri`;
-      if (sezione === "messa")
-        return `https://www.chiesacattolica.it/liturgia-del-giorno/?data-liturgia=${data}`;
-      if (sezione === "letture")
-        return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${data}&ora=ufficio-delle-letture`;
-    }
-
-    // ─── FETCH TRAMITE PROXY ──────────────────────────────────────────
-    async function scaricaHTML(url) {
-      const risposta = await fetch(`${PROXY}?url=${encodeURIComponent(url)}`);
-      if (!risposta.ok) throw new Error(`HTTP ${risposta.status}`);
-      return risposta.text();
-    }
-
-    // ─── ESTRAZIONE TESTO ─────────────────────────────────────────────
-    function estraiContenuto(html, sezione) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-
-      // Rimuovi elementi inutili dal DOM parsed
-      const daRimuovere = [
-        "script", "style", "noscript", "header", "footer", "nav",
-        ".breadcrumb", ".share", ".sidebar", "figure", "img",
-        ".liturgia-nav", ".tabs-liturgia", ".grandezza-testo",
-        "[class*='condividi']", "[class*='social']", "[class*='menu']",
-        "[class*='banner']", ".cookie", "#cookie",
-      ];
-      daRimuovere.forEach(sel => {
-        doc.querySelectorAll(sel).forEach(el => el.remove());
-      });
-
-      // Il contenuto liturgico è dentro un div con classe che contiene "liturgia" o "entry-content"
-      // Proviamo i selettori in ordine di preferenza
-      const selettori = [
-        ".liturgia-content",
-        ".entry-content",
-        "article .content",
-        "article",
-        ".post-content",
-        "main",
-      ];
-
-      let blocco = null;
-      for (const sel of selettori) {
-        blocco = doc.querySelector(sel);
-        if (blocco) break;
+    // Siamo a inizio di una sezione che NON vogliamo?
+    if (cattura && FINE.test(testo) && testo.length < 100) {
+      // Se abbiamo già due sezioni, fermiamoci
+      if (sezioniViste >= 2) {
+        salvaSezione();
+        cattura = false;
+        return;
       }
-
-      if (!blocco) return null;
-
-      // Per l'Ufficio delle letture: estrai solo PRIMA e SECONDA LETTURA
-      if (sezione === "letture") {
-        return estraiLetture(blocco);
-      }
-
-      // Per Vespri e Messa: testo completo, pulito
-      return pulisciHTML(blocco.innerHTML);
+      // Altrimenti potrebbe essere un titoletto interno: ignoriamo e continuiamo
     }
 
-    // Estrae solo i blocchi "PRIMA LETTURA" e "SECONDA LETTURA"
-    function estraiLetture(blocco) {
-      const html = blocco.innerHTML;
-      // Cerca i blocchi che iniziano con PRIMA LETTURA / SECONDA LETTURA
-      // Il sito li segna tipicamente con tag <strong> o <h3> o testo maiuscolo
-      const tutto = blocco.innerText || blocco.textContent;
+    if (cattura) {
+      const testoUp = testo.toUpperCase();
+      const isTitoletto = testo === testoUp && testo.length < 80 && testo.length > 2;
+      const isVersetto  = /^(V\.|R\.|Ant\.)/.test(testo);
 
-      // Strategia: troviamo i paragrafi figli e filtriamo quelli rilevanti
-      const elementi = Array.from(blocco.children);
-      let risultato = "";
-      let cattura = false;
-      let sezioniTrovate = 0;
-
-      for (const el of elementi) {
-        const testo = el.textContent.trim().toUpperCase();
-        // Inizia a catturare quando troviamo "PRIMA LETTURA" o "SECONDA LETTURA"
-        if (testo.includes("PRIMA LETTURA") || testo.includes("SECONDA LETTURA")) {
-          cattura = true;
-          sezioniTrovate++;
-          risultato += el.outerHTML;
-          continue;
-        }
-        // Smetti di catturare quando troviamo un'altra sezione principale (es. RESPONSORIO, ORAZIONE…)
-        if (cattura && (
-          testo.includes("RESPONSORIO") ||
-          testo.includes("TE DEUM") ||
-          testo.includes("ORAZIONE") ||
-          testo.includes("VERSETTO") ||
-          (testo.length < 60 && testo === testo.toUpperCase() && testo.length > 5 && sezioniTrovate > 0)
-        )) {
-          // Se abbiamo già due letture, fermiamoci
-          if (sezioniTrovate >= 2) break;
-          cattura = false;
-        }
-        if (cattura) risultato += el.outerHTML;
-      }
-
-      return risultato ? pulisciHTML(risultato) : "<p class='errore'>Non ho trovato le sezioni Letture. Il sito potrebbe aver cambiato struttura.</p>";
-    }
-
-    // Pulizia HTML: rimuove attributi di stile, classi, link interni
-    function pulisciHTML(html) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
-      const root = doc.querySelector("div");
-
-      // Rimuovi attributi che portano stili o classi CEI
-      root.querySelectorAll("*").forEach(el => {
-        el.removeAttribute("style");
-        el.removeAttribute("class");
-        el.removeAttribute("id");
-        el.removeAttribute("data-wow-delay");
-        // Trasforma i link in testo semplice (no link cliccabili interni)
-        if (el.tagName === "A" && el.href && !el.href.startsWith("mailto")) {
-          el.removeAttribute("href");
-        }
-      });
-
-      // Rimuovi div vuoti
-      root.querySelectorAll("div:empty, p:empty, span:empty").forEach(el => el.remove());
-
-      return root.innerHTML;
-    }
-
-    // Estrai il titolo della pagina
-    function estraiTitolo(html) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-      // Cerca h1 nella pagina
-      const h1 = doc.querySelector("h1");
-      if (h1) return h1.textContent.trim();
-      // Fallback: titolo della pagina
-      const title = doc.querySelector("title");
-      if (title) return title.textContent.split("-")[0].trim();
-      return "Liturgia del Giorno";
-    }
-
-    // ─── CARICAMENTO ──────────────────────────────────────────────────
-    async function carica(sezione) {
-      document.getElementById("titolo").textContent = "Caricamento…";
-      document.getElementById("contenuto").innerHTML = '<p class="stato">⏳ Sto recuperando il testo…</p>';
-
-      const url = urlPerSezione(sezione);
-      document.getElementById("link-originale").href = url;
-
-      try {
-        const html = await scaricaHTML(url);
-        const titolo = estraiTitolo(html);
-        const contenuto = estraiContenuto(html, sezione);
-
-        document.getElementById("titolo").textContent = titolo;
-
-        if (contenuto && contenuto.trim().length > 100) {
-          document.getElementById("contenuto").innerHTML = contenuto;
-        } else {
-          document.getElementById("contenuto").innerHTML =
-            `<p class="errore">⚠️ Non ho trovato il testo. La struttura del sito potrebbe essere cambiata.<br><br>
-            <a href="${url}" target="_blank" style="color:#7a5c3a">Apri la pagina originale →</a></p>`;
-        }
-      } catch (err) {
-        document.getElementById("titolo").textContent = "Errore";
-        document.getElementById("contenuto").innerHTML =
-          `<p class="errore">⚠️ Impossibile caricare il contenuto.<br>
-          Controlla la connessione o <a href="${urlPerSezione(sezione)}" target="_blank" style="color:#7a5c3a">apri il sito originale</a>.<br><br>
-          Dettaglio: ${err.message}</p>`;
+      if (el.classList.contains("spaziatore")) {
+        bufferSezione.push('<p class="spaziatore"></p>');
+      } else if (isTitoletto) {
+        bufferSezione.push(`<p class="titoletto">${pulisciTesto(el)}</p>`);
+      } else if (isVersetto) {
+        bufferSezione.push(`<p class="versetto">${pulisciInline(el)}</p>`);
+      } else {
+        bufferSezione.push(`<p>${pulisciInline(el)}</p>`);
       }
     }
+  });
 
-    // ─── CAMBIO SEZIONE ───────────────────────────────────────────────
-    function cambiaSezione(tabEl) {
-      document.querySelectorAll(".tab").forEach(t => t.classList.remove("attivo"));
-      tabEl.classList.add("attivo");
-      sezioneAttiva = tabEl.dataset.sezione;
-      carica(sezioneAttiva);
-    }
+  salvaSezione(); // salva l'ultima sezione rimasta nel buffer
 
-    // ─── AVVIO ────────────────────────────────────────────────────────
-    document.getElementById("data-oggi").textContent = dataFormattata();
-    carica(sezioneAttiva);
-  </script>
+  if (output.length === 0) {
+    return erroreHTML(
+      "Non ho trovato 'PRIMA LETTURA' o 'SECONDA LETTURA' nel testo.<br>" +
+      "Il sito potrebbe aver cambiato la struttura della pagina."
+    );
+  }
+
+  return output.join("\n");
+}
+
+// ─── HELPER DI PULIZIA ───────────────────────────────────────────────────────
+
+// Restituisce solo il testo dell'elemento (senza tag)
+function pulisciTesto(el) {
+  return el.textContent.trim()
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// Restituisce l'innerHTML ma solo con i tag inline utili (strong, em, br)
+function pulisciInline(el) {
+  // Clona per non modificare il DOM originale
+  const clone = el.cloneNode(true);
+  // Rimuovi tutti gli attributi
+  clone.querySelectorAll("*").forEach(n => {
+    [...n.attributes].forEach(a => n.removeAttribute(a.name));
+  });
+  // Mantieni solo strong, em, br; rimuovi tutto il resto avvolgendo il contenuto
+  // (link, span con stili ecc. diventano testo puro)
+  clone.querySelectorAll("a").forEach(a => {
+    a.replaceWith(document.createTextNode(a.textContent));
+  });
+  clone.querySelectorAll("span").forEach(s => {
+    s.replaceWith(...s.childNodes);
+  });
+  return clone.innerHTML.trim();
+}
+
+function erroreHTML(msg) {
+  return `<p class="errore">⚠️ ${msg}<br><br>
+    Puoi <a id="link-fallback" href="#" target="_blank">aprire la pagina originale →</a></p>`;
+}
+
+// ─── ESTRAZIONE TITOLO ───────────────────────────────────────────────────────
+function estraiTitolo(html, sez) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const h1 = doc.querySelector("h1");
+  if (h1) return h1.textContent.trim();
+  const titoli = { vespri: "Vespri", messa: "Messa del Giorno", letture: "Prima e Seconda Lettura" };
+  return titoli[sez] || "Liturgia del Giorno";
+}
+
+// ─── CARICAMENTO ─────────────────────────────────────────────────────────────
+async function carica(sez) {
+  document.getElementById("titolo").textContent   = "Caricamento…";
+  document.getElementById("contenuto").innerHTML  = '<p class="stato">Recupero il testo…</p>';
+
+  const url = urlPerSezione(sez);
+  document.getElementById("link-orig").href = url;
+
+  try {
+    const html      = await scaricaHTML(url);
+    const titolo    = estraiTitolo(html, sez);
+    const contenuto = estraiETrasforma(html, sez);
+
+    document.getElementById("titolo").textContent = titolo;
+    document.getElementById("contenuto").innerHTML = contenuto;
+
+    // Aggiorna il link fallback dentro il messaggio di errore se presente
+    const lb = document.getElementById("link-fallback");
+    if (lb) lb.href = url;
+
+  } catch (err) {
+    document.getElementById("titolo").textContent = "Errore di rete";
+    document.getElementById("contenuto").innerHTML =
+      `<p class="errore">⚠️ Impossibile caricare il contenuto.<br>
+       Controlla la connessione o <a href="${urlPerSezione(sez)}" target="_blank">apri il sito originale</a>.<br><br>
+       Dettaglio tecnico: ${err.message}</p>`;
+  }
+}
+
+// ─── CAMBIO TAB ──────────────────────────────────────────────────────────────
+function cambia(el) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("attivo"));
+  el.classList.add("attivo");
+  carica(el.dataset.sez);
+}
+
+// ─── AVVIO ───────────────────────────────────────────────────────────────────
+document.getElementById("data-oggi").textContent = dataLeggibile();
+carica("vespri");
+</script>
 </body>
 </html>
