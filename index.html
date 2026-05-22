@@ -1,615 +1,848 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Liturgia" />
+  <meta charset="UTF-8">
+  <!--
+    viewport-fit=cover: fa sì che il contenuto occupi tutta la
+    finestra iPhone, incluse le aree delle tacche (notch) e del
+    home indicator. Le safe-area-inset le gestiamo noi via CSS.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <!-- Obbligatorio per la modalità fullscreen da Home Screen su iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <!--
+    black-translucent: la status bar diventa trasparente e il
+    contenuto scorre dietro di essa (usiamo il padding-top safe-area).
+    Se preferisci la status bar scura opaca, usa "black".
+  -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Liturgia">
+
+  <!-- Icona per il bottone "Aggiungi a Home Screen" di Safari -->
+  <!-- Crea un file icon.png 192×192 px e mettilo nella stessa cartella -->
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.json">
+
   <title>Liturgia del Giorno</title>
+
   <style>
-    /* ─── VARIABILI E RESET ─────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    /* ─────────────────────────────────────────────────
+       VARIABILI TEMA
+       Pergamena calda per la luce, notte sepia per il buio.
+       Il --accent è il bordeaux tradizionale dei libri liturgici.
+    ───────────────────────────────────────────────── */
     :root {
-      --bg:        #fdfaf5;
-      --carta:     #f7f3ec;
-      --testo:     #1c1a17;
-      --accento:   #6b4c2a;
-      --tenue:     #a89278;
-      --tab-bg:    #ede8df;
-      --tab-on:    #6b4c2a;
-      --tab-off:   #8c7560;
-      --sep:       #d8cfbf;
-      --rientro:   1.4em;
+      --bg:       #faf8f3;
+      --surface:  #f2ede2;
+      --text:     #22190d;
+      --muted:    #8a7d68;
+      --accent:   #6b3416;
+      --rubric:   #8b1a1a;   /* rosso rubrica tradizionale */
+      --border:   #ddd5c5;
+      --tab-bg:   rgba(250, 248, 243, 0.94);
+      /* iOS safe areas: evitano sovrapposizioni con notch e home bar */
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #181410;
+        --surface: #221d15;
+        --text:    #ede4d0;
+        --muted:   #9a8c76;
+        --accent:  #c87840;
+        --rubric:  #d96060;
+        --border:  #332b1e;
+        --tab-bg:  rgba(24, 20, 16, 0.96);
+      }
     }
 
-    body {
+    /* ─────────────────────────────────────────────────
+       RESET E BASE
+    ───────────────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      height: 100%;
+      overflow: hidden;          /* l'unico scroll è quello interno a #scroll-area */
       background: var(--bg);
-      color: var(--testo);
-      /* Georgia come serif di lettura; Palatino come fallback ancora più elegante */
-      font-family: Palatino, 'Palatino Linotype', Georgia, 'Times New Roman', serif;
-      font-size: 18px;
-      line-height: 1.8;
-      /* Rispetta notch / Dynamic Island / barra inferiore di Safari */
-      padding:
-        calc(env(safe-area-inset-top, 16px) + 16px)
-        calc(env(safe-area-inset-right, 0px) + 20px)
-        calc(env(safe-area-inset-bottom, 0px) + 32px)
-        calc(env(safe-area-inset-left, 0px) + 20px);
-      min-height: 100dvh;
+      color: var(--text);
+      /* -webkit-text-size-adjust evita che iOS ingrandisca automaticamente
+         il testo quando il viewport ruota */
+      -webkit-text-size-adjust: 100%;
     }
 
-    /* ─── BARRA SEZIONI ─────────────────────────────────── */
-    .tabs {
+    /* ─────────────────────────────────────────────────
+       LAYOUT PRINCIPALE
+       Flex verticale: header fisso in cima, area di scroll
+       al centro, tab bar fissa in fondo.
+    ───────────────────────────────────────────────── */
+    #app {
       display: flex;
-      gap: 5px;
-      margin-bottom: 28px;
-      background: var(--tab-bg);
-      border-radius: 11px;
-      padding: 4px;
+      flex-direction: column;
+      height: 100%;
+      /* Padding per la status bar iOS (tacca superiore) */
+      padding-top: var(--safe-top);
+    }
+
+    /* ─────────────────────────────────────────────────
+       HEADER
+    ───────────────────────────────────────────────── */
+    #header {
+      flex-shrink: 0;
+      padding: 14px 20px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    #header-date {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
       font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      margin-bottom: 3px;
+    }
+    #header-title {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: var(--accent);
+      letter-spacing: -0.3px;
+    }
+
+    /* ─────────────────────────────────────────────────
+       AREA DI SCORRIMENTO
+    ───────────────────────────────────────────────── */
+    #scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch; /* scroll momentum su iOS */
+      /* Padding inferiore: altezza tab bar + safe area + margine */
+      padding: 28px 20px calc(64px + var(--safe-bot) + 20px);
+    }
+
+    /* ─────────────────────────────────────────────────
+       STATO: CARICAMENTO
+    ───────────────────────────────────────────────── */
+    #state-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 72px 24px;
+      color: var(--muted);
+      font-family: -apple-system, sans-serif;
+      font-size: 14px;
+      gap: 16px;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─────────────────────────────────────────────────
+       STATO: ERRORE
+    ───────────────────────────────────────────────── */
+    #state-error {
+      display: none;
+      padding: 22px;
+      border: 1px solid var(--rubric);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--rubric);
+      font-family: -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+    #state-error a {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+    #state-error strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+
+    /* ─────────────────────────────────────────────────
+       CONTENUTO LITURGICO
+       Tipografia ottimizzata per la lettura spirituale
+       su schermo piccolo.
+    ───────────────────────────────────────────────── */
+    #liturgy {
+      display: none;
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    /* Tutti gli elementi ereditano il font serif dal contenitore */
+    #liturgy * {
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    /* Testo principale dei salmi, letture, inni */
+    #liturgy p {
+      font-size: 17.5px;
+      line-height: 1.95;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    /* Titolo h1 dell'ora (Vespri, Messa, ecc.): già nell'header, lo nascondiamo */
+    #liturgy h1 {
+      display: none;
+    }
+
+    /* h2/h3/h4: titoli di sezione (INNO, SALMO, CANTICO...) */
+    #liturgy h2, #liturgy h3, #liturgy h4 {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: -apple-system, sans-serif;
+      margin: 28px 0 10px;
+    }
+
+    /* Separatore orizzontale tra prima e seconda lettura */
+    #liturgy hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 32px 0;
+    }
+
+    /* Citazioni bibliche di riferimento (Es. "Eb 3, 13") */
+    #liturgy em {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 15px;
+    }
+
+    /* Rubrica liturgica: V. R. Ant.
+       Aggiunte via JS dopo il rendering, per colorarle di rosso. */
+    #liturgy p.rubric {
+      color: var(--rubric);
+      font-weight: 600;
+      font-size: 14.5px;
+      margin-top: 14px;
+      margin-bottom: 1px;
+    }
+
+    /* Sottotitolo liturgico (es. "VII SETTIMANA DI PASQUA")
+       che appare come primo paragrafo visibile dopo h1 */
+    #liturgy p.liturgy-subtitle {
+      font-size: 10.5px;
+      font-family: -apple-system, sans-serif;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 28px;
+      font-weight: 500;
+    }
+
+    /* Intestazione delle sezioni PRIMA / SECONDA LETTURA */
+    #liturgy .lettura-section > *:first-child {
+      display: block;
+      font-size: 10.5px;
+      font-family: -apple-system, sans-serif;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--rubric);
+      font-weight: 700;
+      margin-bottom: 18px;
+      /* Usa style serif anche per la label */
+      font-style: normal;
+    }
+
+    /* ─────────────────────────────────────────────────
+       TAB BAR iOS
+       Backdrop blur per l'effetto frosted-glass tipico di iOS.
+    ───────────────────────────────────────────────── */
+    #tab-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: calc(56px + var(--safe-bot));
+      padding-bottom: var(--safe-bot);
+      background: var(--tab-bg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      z-index: 100;
     }
     .tab {
       flex: 1;
-      text-align: center;
-      padding: 9px 4px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.03em;
-      color: var(--tab-off);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding-top: 6px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
       cursor: pointer;
-      transition: background 0.18s, color 0.18s;
+      /* Rimuove il flash blu al tap su iOS Safari */
       -webkit-tap-highlight-color: transparent;
+      transition: color 0.12s ease;
       user-select: none;
     }
-    .tab.attivo {
-      background: var(--tab-on);
-      color: #fff;
-      box-shadow: 0 1px 4px rgba(107,76,42,0.25);
+    .tab.active {
+      color: var(--accent);
     }
-
-    /* ─── DATA E TITOLO ─────────────────────────────────── */
-    .meta {
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      font-size: 11px;
+    .tab-icon {
+      font-size: 22px;
+      line-height: 1;
+    }
+    .tab-label {
+      font-size: 10px;
+      letter-spacing: 0.1px;
       font-weight: 500;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--tenue);
-      margin-bottom: 6px;
-    }
-    h1 {
-      font-size: 1.45em;
-      font-weight: normal;
-      font-style: italic;
-      color: var(--accento);
-      margin-bottom: 22px;
-      line-height: 1.3;
-    }
-
-    /* ─── SEPARATORE VISIVO ─────────────────────────────── */
-    .sep { border: none; border-top: 1px solid var(--sep); margin: 22px 0; }
-
-    /* ─── TESTO LITURGICO ───────────────────────────────── */
-
-    /*
-      Strategia spaziatura: NON pesco spazi dall'HTML del sito (sono
-      codificati in classi CSS o <br> multipli che andiamo a perdere
-      durante la pulizia). Invece convertiamo ogni blocco HTML in una
-      sequenza di righe di testo strutturato, poi lo ricomponiamo noi
-      con il nostro CSS, così il risultato è indipendente dal markup
-      del sito e visivamente coerente.
-
-      Le regole di spaziatura che applichiamo:
-        - ogni <p> → margine sotto di 1em
-        - sequenze di più <br> consecutive → trattate come separatore
-          di paragrafo (margin-bottom aggiuntivo)
-        - elementi con testo in maiuscolo breve (titoletti di sezione)
-          → piccolo cap/letterspacing, colore accento, margine sopra
-        - righe che iniziano con V. R. Ant. → rientro negativo (hanging)
-    */
-
-    #contenuto {
-      /* Nessun font ridefinito: eredita il Palatino del body */
-    }
-
-    /* Paragrafi standard */
-    #contenuto p {
-      margin-bottom: 1em;
-    }
-
-    /* Paragrafo vuoto usato come spaziatore: lo trasformiamo in
-       separazione verticale visibile invece di eliminarlo */
-    #contenuto p:empty,
-    #contenuto p.spaziatore {
-      display: block;
-      height: 0.6em;
-      margin: 0;
-    }
-
-    /* Titoletti di sezione (SALMO 23, INNO, RESPONSORIO…):
-       testo breve tutto in maiuscolo = titoletto liturgico */
-    #contenuto .titoletto {
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      font-size: 0.72em;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accento);
-      margin-top: 1.8em;
-      margin-bottom: 0.4em;
-    }
-
-    /* Sottotitolo in corsivo (citazione biblica, indicazione di forma) */
-    #contenuto .sottotitolo {
-      font-style: italic;
-      color: var(--tenue);
-      font-size: 0.9em;
-      margin-bottom: 0.6em;
-    }
-
-    /* Versetti con V. R. Ant. all'inizio: hanging indent */
-    #contenuto .versetto {
-      padding-left: var(--rientro);
-      text-indent: calc(-1 * var(--rientro));
-      margin-bottom: 0.5em;
-    }
-
-    /* Antifona: leggero grigio */
-    #contenuto .ant {
-      color: var(--tenue);
-      font-style: italic;
-    }
-
-    /* Testo in grassetto dal sito: lo manteniamo ma con il colore accento */
-    #contenuto strong, #contenuto b {
-      font-weight: bold;
-      color: var(--accento);
-    }
-
-    /* Stato caricamento / errore */
-    .stato {
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      font-size: 15px;
-      color: var(--tenue);
-      text-align: center;
-      padding: 48px 0;
-    }
-    .errore {
-      color: #b94a4a;
-      font-size: 14px;
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      line-height: 1.6;
-    }
-    .errore a { color: var(--accento); }
-
-    /* Link discreto in fondo */
-    .link-orig {
-      display: block;
-      margin-top: 36px;
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      font-size: 11px;
-      color: var(--tenue);
-      text-decoration: none;
-      text-align: center;
-      letter-spacing: 0.04em;
     }
   </style>
 </head>
+
 <body>
+<div id="app">
 
-  <div class="tabs">
-    <div class="tab attivo" data-sez="vespri"   onclick="cambia(this)">Vespri</div>
-    <div class="tab"        data-sez="messa"    onclick="cambia(this)">Messa</div>
-    <div class="tab"        data-sez="letture"  onclick="cambia(this)">Letture</div>
-  </div>
+  <header id="header">
+    <div id="header-date">—</div>
+    <div id="header-title">Liturgia del Giorno</div>
+  </header>
 
-  <p class="meta" id="data-oggi"></p>
-  <h1 id="titolo">Caricamento…</h1>
-  <hr class="sep" />
-  <div id="contenuto"><p class="stato">Recupero il testo…</p></div>
-  <a class="link-orig" id="link-orig" href="#" target="_blank">Apri sul sito originale ↗</a>
+  <main id="scroll-area">
+    <div id="state-loading">
+      <div class="spinner"></div>
+      Caricamento testo liturgico…
+    </div>
+    <div id="state-error"></div>
+    <div id="liturgy"></div>
+  </main>
+
+  <nav id="tab-bar">
+    <button class="tab" data-tab="vespri">
+      <span class="tab-icon">🕯️</span>
+      <span class="tab-label">Vespri</span>
+    </button>
+    <button class="tab" data-tab="messa">
+      <span class="tab-icon">✝️</span>
+      <span class="tab-label">Messa</span>
+    </button>
+    <button class="tab" data-tab="ufficio">
+      <span class="tab-icon">📖</span>
+      <span class="tab-label">Letture</span>
+    </button>
+  </nav>
+
+</div>
 
 <script>
-// ─── CONFIGURAZIONE ──────────────────────────────────────────────────────────
-// Inserisci qui l'URL del tuo Cloudflare Worker dopo il deploy.
-// Se stai testando con allorigins, usa: "https://api.allorigins.win/raw?url="
-// In quel caso la chiamata diventa: fetch(PROXY + encodeURIComponent(url))
-// e devi impostare PROXY_MODE = "allorigins" qui sotto.
-const PROXY      = "https://yellow-king-c720.giuseppemc.workers.dev/";
-const PROXY_MODE = "worker"; // "worker" oppure "allorigins"
+/* ═══════════════════════════════════════════════════════════════
+   CONFIGURAZIONE
+   ═══════════════════════════════════════════════════════════════
 
-// ─── UTILITÀ DATA ────────────────────────────────────────────────────────────
-function dataISO() {
-  // Produce YYYYMMDD nel fuso locale (importante: non UTC, che potrebbe
-  // essere il giorno sbagliato se sei in Italia nelle prime ore)
-  const d = new Date();
-  const yy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const gg = String(d.getDate()).padStart(2, "0");
-  return `${yy}${mm}${gg}`;
+   PROXY_URL: l'URL del proxy CORS da usare.
+
+   Opzione A (immediata, nessun setup):
+     corsproxy.io — proxy pubblico gratuito, funziona subito.
+     Rate limit: abbondante per uso personale quotidiano.
+
+   Opzione B (consigliata per uso stabile):
+     Il tuo Cloudflare Worker (vedi worker.js incluso).
+     Una volta deployato, sostituisci la riga PROXY con il tuo URL.
+
+   ═══════════════════════════════════════════════════════════════ */
+
+const PROXY = 'https://corsproxy.io/?url=';
+// const PROXY = 'https://IL-TUO-WORKER.workers.dev/?url=';
+
+const CEI_BASE = 'https://www.chiesacattolica.it';
+
+/* ═══════════════════════════════════════════════════════════════
+   STATO APPLICAZIONE
+   ═══════════════════════════════════════════════════════════════ */
+let activeTab = null;
+const memCache = {};  // Cache in memoria per la sessione corrente
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILITÀ DATA
+   ═══════════════════════════════════════════════════════════════
+
+   Usiamo Intl.DateTimeFormat con timeZone 'Europe/Rome' per essere
+   certi di usare la data liturgica corretta anche se l'iPhone è
+   fisicamente in un altro fuso orario.
+   ═══════════════════════════════════════════════════════════════ */
+function getDateStr() {
+  const parts = new Intl.DateTimeFormat('it-IT', {
+    timeZone: 'Europe/Rome',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const v = k => parts.find(p => p.type === k).value;
+  return `${v('year')}${v('month')}${v('day')}`;
 }
 
-function dataLeggibile() {
-  return new Date().toLocaleDateString("it-IT", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric"
+function formatDateLabel(ds) {
+  // ds è nel formato YYYYMMDD
+  const iso = `${ds.slice(0,4)}-${ds.slice(4,6)}-${ds.slice(6,8)}T12:00:00`;
+  return new Date(iso).toLocaleDateString('it-IT', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
 
-// ─── URL PER SEZIONE ─────────────────────────────────────────────────────────
-function urlPerSezione(sez) {
-  const d = dataISO();
-  if (sez === "vespri")
-    return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${d}&ora=vespri`;
-  if (sez === "messa")
-    return `https://www.chiesacattolica.it/liturgia-del-giorno/?data-liturgia=${d}`;
-  if (sez === "letture")
-    return `https://www.chiesacattolica.it/la-liturgia-delle-ore/?data-liturgia=${d}&ora=ufficio-delle-letture`;
-}
+/* ═══════════════════════════════════════════════════════════════
+   URL BUILDER
+   ═══════════════════════════════════════════════════════════════
 
-// ─── FETCH TRAMITE PROXY ─────────────────────────────────────────────────────
-async function scaricaHTML(url) {
-  let proxyUrl;
-  if (PROXY_MODE === "allorigins") {
-    proxyUrl = PROXY + encodeURIComponent(url);
-  } else {
-    proxyUrl = `${PROXY}?url=${encodeURIComponent(url)}`;
+   Gli URL sono completamente deterministici dalla data.
+   Non è necessario fare scraping della homepage per trovare i link.
+   Il parametro ?data-liturgia=YYYYMMDD è stabile da anni.
+   ═══════════════════════════════════════════════════════════════ */
+function buildUrl(tab, ds) {
+  switch (tab) {
+    case 'messa':
+      return `${CEI_BASE}/liturgia-del-giorno/?data-liturgia=${ds}`;
+    case 'vespri':
+      return `${CEI_BASE}/la-liturgia-delle-ore/?data-liturgia=${ds}&ora=vespri`;
+    case 'ufficio':
+      return `${CEI_BASE}/la-liturgia-delle-ore/?data-liturgia=${ds}&ora=ufficio-delle-letture`;
   }
-  const r = await fetch(proxyUrl);
-  if (!r.ok) throw new Error(`HTTP ${r.status} dal proxy`);
-  return r.text();
 }
 
-// ─── ESTRAZIONE E PULIZIA CONTENUTO ─────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════
+   FETCH CON CACHE A DUE LIVELLI
+   ═══════════════════════════════════════════════════════════════
 
-/*
-  STRATEGIA DI ESTRAZIONE:
-  1. Parsiamo l'HTML con DOMParser.
-  2. Troviamo il blocco di contenuto principale (entry-content o equivalente).
-  3. Rimuoviamo dal DOM tutti gli elementi di contorno (nav, share, figure, ecc.).
-  4. Percorriamo i nodi uno ad uno con un walker e costruiamo una
-     rappresentazione intermedia in testo + marcatori strutturali.
-  5. Da quella rappresentazione, generiamo HTML semantico pulito che
-     il nostro CSS poi formatta correttamente.
+   1° livello: cache in memoria (velocissima, dura la sessione)
+   2° livello: localStorage con chiave {tab}_{YYYYMMDD}
 
-  Perché non fare solo innerHTML strip?
-  Perché le spaziature nel sito originale dipendono da classi CSS che
-  non possiamo portarci dietro. Dobbiamo REINTERPRETARE la struttura
-  e ricrearla con il nostro markup.
-*/
+   Le voci di giorni precedenti vengono cancellate automaticamente
+   al primo accesso del giorno nuovo, così lo storage non si riempie.
+   ═══════════════════════════════════════════════════════════════ */
+async function fetchPage(tab, ds) {
+  const key = `${tab}_${ds}`;
 
-function estraiETrasforma(html, sez) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
+  // Cache memoria
+  if (memCache[key]) return memCache[key];
 
-  // Rimuovi tutto ciò che non è testo liturgico
-  [
-    "script","style","noscript","header","footer","nav",
-    "figure","img","iframe","video","audio",
-    ".breadcrumb","[class*='share']","[class*='social']",
-    "[class*='grandezza']","[class*='condividi']",
-    "[class*='stampa']","[class*='widget']",
-    "[class*='banner']","[class*='sidebar']",
-    "[class*='menu']","[class*='cookie']",
-    // I link di navigazione ore (Vespri / Lodi / ecc.)
-    ".tabs-liturgia",".liturgia-nav","ul.ore",
-    // La riga con i link A A A dimensione testo
-    ".dimensione-testo",
-    // Pulsanti "Lettura a schermo intero" ecc.
-    ".fullscreen","[class*='fullscreen']",
-  ].forEach(sel => {
-    doc.querySelectorAll(sel).forEach(el => el.remove());
-  });
+  // Cache localStorage
+  const stored = localStorage.getItem(key);
+  if (stored) {
+    memCache[key] = stored;
+    return stored;
+  }
 
-  // Trova il blocco principale del contenuto
-  const SELETTORI_CONTENUTO = [
-    ".entry-content",
-    ".liturgia-content",
-    "[class*='liturgia-text']",
-    "article .content",
-    "article",
-    ".post-content",
-    "main .container",
-    "main",
+  // Pulizia chiavi di giorni precedenti (mantieni solo oggi)
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && !k.endsWith(`_${ds}`)) localStorage.removeItem(k);
+  }
+
+  // Fetch reale tramite proxy CORS
+  const url = buildUrl(tab, ds);
+  const res = await fetch(PROXY + encodeURIComponent(url));
+  if (!res.ok) throw new Error(`Risposta HTTP ${res.status} dal server`);
+
+  const html = await res.text();
+
+  // Salva in entrambe le cache
+  memCache[key] = html;
+  try { localStorage.setItem(key, html); } catch (_) {
+    // localStorage pieno o non disponibile: prosegui senza cache persistente
+  }
+
+  return html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TROVA IL CONTENITORE PRINCIPALE
+   ═══════════════════════════════════════════════════════════════
+
+   Cascata di selettori CSS dal più specifico al più generico.
+   ".entry-content" è la convenzione WordPress standard e quasi
+   certamente funzionerà su questo sito.
+   ═══════════════════════════════════════════════════════════════ */
+function findContentEl(doc) {
+  const selectors = [
+    '.entry-content',
+    'article .content',
+    '.post-content',
+    'main article',
+    'article',
+    'main'
   ];
-  let blocco = null;
-  for (const s of SELETTORI_CONTENUTO) {
-    blocco = doc.querySelector(s);
-    if (blocco && blocco.textContent.trim().length > 200) break;
+  for (const s of selectors) {
+    const el = doc.querySelector(s);
+    // Valido solo se contiene testo liturgico significativo (> 300 caratteri)
+    if (el && el.textContent.trim().length > 300) return el;
   }
-  if (!blocco) return erroreHTML("Blocco contenuto non trovato. Struttura del sito cambiata?");
-
-  // Per Ufficio delle letture: estrai SOLO i blocchi Prima/Seconda Lettura
-  if (sez === "letture") {
-    return estraiLetture(blocco);
-  }
-
-  // Per Vespri e Messa: trasforma tutto il contenuto
-  return trasformaInHtmlPulito(blocco);
+  // Fallback estremo: tutto il body
+  return doc.body;
 }
 
-// ─── TRASFORMAZIONE HTML PULITO ──────────────────────────────────────────────
-/*
-  Percorre i nodi del blocco e costruisce HTML nuovo con classi semantiche.
-  Regole principali:
-    - Sequenze di <br> multiple → paragrafo spaziatore (altezza aggiuntiva)
-    - Paragrafo con testo breve tutto maiuscolo → .titoletto
-    - Paragrafo che inizia con "V." "R." "Ant." → .versetto (con hanging)
-    - Citazioni bibliche in corsivo → .sottotitolo
-    - Tutto il resto → <p> normale
-*/
-function trasformaInHtmlPulito(blocco) {
-  // Raccogliamo i "figli logici": paragrafi e blocchi rilevanti
-  const output = [];
-  const figli = Array.from(blocco.querySelectorAll(
-    "p, h2, h3, h4, h5, h6, blockquote, div > br, div"
-  ));
+/* ═══════════════════════════════════════════════════════════════
+   PULIZIA ELEMENTI NON NECESSARI
+   ═══════════════════════════════════════════════════════════════
 
-  // Se i selettori granulari non trovano nulla, lavoriamo sull'intero innerHTML
-  // convertendo br multipli in separatori di paragrafo
-  const testoGrezzo = blocco.innerHTML;
+   Rimuoviamo tutti gli elementi che non fanno parte del testo
+   liturgico: immagini, social sharing, controllo grandezza testo,
+   breadcrumb, link di stampa, ecc.
+   ═══════════════════════════════════════════════════════════════ */
+function cleanEl(el) {
+  // Rimozione per selettore CSS
+  const cssToRemove = [
+    'img', 'figure', 'picture', 'video', 'iframe',
+    'script', 'style', 'noscript',
+    'nav', 'header', 'footer', 'aside',
+    '[class*="share"]', '[class*="social"]',
+    '[class*="grandezza"]', '[class*="font-size"]',
+    '.addtoany_share_save_container', '.a2a_kit',
+    'a[href*="facebook"]', 'a[href*="twitter"]',
+    'a[href*="mailto"]',
+    // Link con href="#" usati solo come controlli UI (tasto grandezza testo)
+    'a[href="#"]',
+    '.breadcrumb', '.breadcrumbs', '.wp-block-buttons'
+  ];
 
-  // Normalizza: trasforma <br><br> e varianti in separatori veri
-  let htmlNorm = testoGrezzo
-    // Due o più <br> consecutivi (con spazio/&nbsp; in mezzo) → tag speciale
-    .replace(/(<br\s*\/?>[\s\u00a0]*){2,}/gi, '</p><p class="spaziatore"></p><p>')
-    // Un singolo <br> → va bene, lo lasciamo
-    .replace(/<br\s*\/?>/gi, "<br>");
-
-  // Ora re-parsificazione semplice del risultato normalizzato
-  const doc2 = new DOMParser();
-  const frag = doc2.parseFromString(`<div>${htmlNorm}</div>`, "text/html");
-  const root = frag.querySelector("div");
-
-  // Percorri tutti i paragrafi del risultato normalizzato
-  const paragrafi = root.querySelectorAll("p, h2, h3, h4, h5, h6, li");
-  if (paragrafi.length === 0) {
-    // Fallback: restituiamo il testo grezzo con <br> preservati
-    return `<p>${testoGrezzo}</p>`;
-  }
-
-  paragrafi.forEach(el => {
-    const testo = el.textContent.trim();
-    if (!testo && !el.classList.contains("spaziatore")) {
-      // Paragrafo vuoto → spaziatore
-      output.push('<p class="spaziatore"></p>');
-      return;
-    }
-    if (el.classList.contains("spaziatore")) {
-      output.push('<p class="spaziatore"></p>');
-      return;
-    }
-
-    // Determina la classe semantica
-    const testoUp = testo.toUpperCase();
-    const isTitoletto =
-      testo === testoUp &&             // tutto maiuscolo
-      testo.length < 80 &&            // breve
-      testo.length > 2 &&
-      !testo.startsWith("V.") &&
-      !testo.startsWith("R.") &&
-      !testo.startsWith("ANT.");
-
-    const isVersetto =
-      /^(V\.|R\.|Ant\.|ANT\.)/.test(testo);
-
-    const isSottotitolo =
-      /^\(/.test(testo) ||            // inizia con parentesi (citazione)
-      el.tagName === "EM" ||
-      (el.querySelector && el.querySelector("em") && testo.length < 120);
-
-    if (isTitoletto) {
-      // Puliamo il testo da eventuali tag interni, vogliamo solo testo
-      output.push(`<p class="titoletto">${pulisciTesto(el)}</p>`);
-    } else if (isVersetto) {
-      output.push(`<p class="versetto">${pulisciInline(el)}</p>`);
-    } else if (isSottotitolo) {
-      output.push(`<p class="sottotitolo">${pulisciInline(el)}</p>`);
-    } else {
-      output.push(`<p>${pulisciInline(el)}</p>`);
-    }
+  cssToRemove.forEach(s => {
+    try { el.querySelectorAll(s).forEach(e => e.remove()); }
+    catch (_) {} // Ignora selettori non supportati
   });
 
-  const risultato = output.join("\n");
-  return risultato.length > 50
-    ? risultato
-    : erroreHTML("Il testo estratto è troppo breve. Struttura del sito cambiata?");
+  // Rimozione per contenuto testuale (bottoni e label UI)
+  const utilityTexts = [
+    'Grandezza Testo', 'Condividi', 'Invia', 'Stampa',
+    'Facebook', 'Twitter', 'Torna ai risultati',
+    'Lettura a schermo intero', 'Chiudi mappa'
+  ];
+
+  // Elaboriamo dal fondo dell'array per non invalidare gli indici
+  // dopo le rimozioni
+  Array.from(el.querySelectorAll('p, div, span, a, li, button'))
+    .reverse()
+    .forEach(e => {
+      const t = e.textContent.trim();
+      if (
+        utilityTexts.some(u => t === u) ||
+        /^A\s+A\s+A$/.test(t) ||  // Controllo grandezza testo "A A A"
+        /^Home$/.test(t)
+      ) {
+        e.remove();
+      }
+    });
 }
 
-// ─── ESTRAZIONE LETTURE ───────────────────────────────────────────────────────
-/*
-  Per l'Ufficio delle letture vogliamo SOLO i blocchi sotto
-  "PRIMA LETTURA" e "SECONDA LETTURA", escludendo tutto il resto.
+/* ═══════════════════════════════════════════════════════════════
+   HELPER: trova il figlio diretto del container che contiene
+   (o è) l'elemento dato
+   ═══════════════════════════════════════════════════════════════ */
+function topChild(descendant, container) {
+  let curr = descendant;
+  while (curr && curr.parentElement !== container) {
+    curr = curr.parentElement;
+  }
+  return (curr && curr.parentElement === container) ? curr : null;
+}
 
-  Strategia: cerchiamo nel testo completo del blocco le occorrenze
-  di questi due titoli, poi estraiamo tutto il contenuto tra il titolo
-  trovato e il successivo titolo di sezione (RESPONSORIO, TE DEUM, ecc.)
-  o la fine del blocco.
+/* ═══════════════════════════════════════════════════════════════
+   RIMOZIONE SEZIONI ALTERNATIVE (Oppure:)
+   ═══════════════════════════════════════════════════════════════
 
-  Lavoriamo sull'HTML grezzo normalizzato (non sul DOM), perché i titoli
-  possono essere annidati in vari modi.
-*/
-function estraiLetture(blocco) {
-  // Prendiamo l'HTML interno normalizzato
-  const html = blocco.innerHTML;
+   "Oppure:" introduce un testo alternativo equivalente al
+   precedente (tipicamente la versione latina di un inno).
+   
+   Strategia:
+   1. Trova ogni elemento foglia con testo esattamente "Oppure:"
+   2. Risali al figlio diretto del container principale
+   3. Rimuovi da lì fino all'inizio della sezione successiva
+      (riconosciuta da pattern come "1 ant.", "SALMO", ecc.)
+   ═══════════════════════════════════════════════════════════════ */
+function removeAlternatives(el) {
+  // Pattern che segnalano l'inizio di una nuova sezione liturgica
+  const nextSectionPat = /^(\d+\s*ant\.|SALMO\b|CANTICO\b|INNO\b|PRIMA\s+LETTURA|SECONDA\s+LETTURA|RESPONSORIO|ORAZIONE\b|V\.\s|R\.\s|ANT\.)/i;
 
-  // Normalizziamo: rimuoviamo tag di navigazione/condividi
-  const doc2 = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-  doc2.querySelectorAll("script,style,nav,ul,a[href*='facebook'],a[href*='twitter']").forEach(e=>e.remove());
-  const testo = doc2.querySelector("div").innerHTML;
+  // Trova tutti gli elementi foglia con testo "Oppure:" (senza figli propri)
+  // Li elaboriamo dal fondo per non invalidare i riferimenti al DOM
+  const oppureEls = Array.from(el.querySelectorAll('*'))
+    .filter(e => {
+      const t = e.textContent.trim();
+      return (t === 'Oppure:' || t === 'Oppure') && e.children.length === 0;
+    })
+    .reverse();
 
-  // Dividiamo il testo in righe logiche separando ai tag di blocco
-  // poi cerchiamo le sezioni PRIMA LETTURA / SECONDA LETTURA
-  const output = [];
+  for (const leaf of oppureEls) {
+    const top = topChild(leaf, el);
+    if (!top) continue;
 
-  // Markers di inizio sezione che vogliamo catturare
-  const INIZIO = /PRIMA\s+LETTURA|SECONDA\s+LETTURA/i;
-  // Markers di fine sezione (inizia una nuova sezione che NON vogliamo)
-  const FINE   = /RESPONSORIO|TE\s+DEUM|ORAZIONE\s+CONCLUSIVA|BENEDICI|INVITATORIO|LODI|VESPRI|COMPIETA|ORA\s+MEDIA/i;
+    // Raccogliamo top + tutti i fratelli successivi fino alla prossima sezione
+    const toRemove = [top];
+    let sib = top.nextElementSibling;
 
-  // Spezziamo l'HTML per tag di blocco
-  const pezzi = testo
-    .replace(/<\/(p|div|h[1-6]|li|br)>/gi, "|||")
-    .split("|||")
-    .map(p => p.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
-    .filter(p => p.length > 0);
-
-  // Ripetiamo però sul DOM strutturato per avere HTML (non testo piano)
-  // Strategia più robusta: lavoriamo sull'HTML normalizzato a paragrafi
-  const htmlNorm = testo
-    .replace(/(<br\s*\/?>[\s\u00a0]*){2,}/gi, '</p><p class="spaziatore"></p><p>')
-    .replace(/<br\s*\/?>/gi, "<br>");
-
-  const frag = new DOMParser().parseFromString(`<div>${htmlNorm}</div>`, "text/html");
-  const tutti = Array.from(frag.querySelectorAll("p, h2, h3, h4, h5, h6, li, div"));
-
-  let cattura      = false;   // stiamo catturando?
-  let sezioniViste = 0;       // quante sezioni lettura abbiamo trovato
-  let bufferSezione = [];     // paragrafi della sezione corrente
-
-  const salvaSezione = () => {
-    if (bufferSezione.length > 0) {
-      output.push(...bufferSezione);
-      output.push('<hr class="sep" />');
-      bufferSezione = [];
-    }
-  };
-
-  tutti.forEach(el => {
-    const testo = el.textContent.trim();
-    if (!testo && !el.classList.contains("spaziatore")) return;
-
-    // Siamo a inizio di una sezione lettura?
-    if (INIZIO.test(testo) && testo.length < 100) {
-      salvaSezione();          // salva eventuale sezione precedente
-      cattura = true;
-      sezioniViste++;
-      bufferSezione.push(`<p class="titoletto">${testo}</p>`);
-      return;
+    while (sib) {
+      const t = sib.textContent ? sib.textContent.trim() : '';
+      if (nextSectionPat.test(t)) break; // trovata la sezione successiva: ci fermiamo
+      toRemove.push(sib);
+      sib = sib.nextElementSibling;
     }
 
-    // Siamo a inizio di una sezione che NON vogliamo?
-    if (cattura && FINE.test(testo) && testo.length < 100) {
-      // Se abbiamo già due sezioni, fermiamoci
-      if (sezioniViste >= 2) {
-        salvaSezione();
-        cattura = false;
-        return;
-      }
-      // Altrimenti potrebbe essere un titoletto interno: ignoriamo e continuiamo
-    }
+    toRemove.forEach(n => n.remove());
+  }
+}
 
-    if (cattura) {
-      const testoUp = testo.toUpperCase();
-      const isTitoletto = testo === testoUp && testo.length < 80 && testo.length > 2;
-      const isVersetto  = /^(V\.|R\.|Ant\.)/.test(testo);
+/* ═══════════════════════════════════════════════════════════════
+   ESTRAZIONE PRIMA E SECONDA LETTURA
+   ═══════════════════════════════════════════════════════════════
 
-      if (el.classList.contains("spaziatore")) {
-        bufferSezione.push('<p class="spaziatore"></p>');
-      } else if (isTitoletto) {
-        bufferSezione.push(`<p class="titoletto">${pulisciTesto(el)}</p>`);
-      } else if (isVersetto) {
-        bufferSezione.push(`<p class="versetto">${pulisciInline(el)}</p>`);
-      } else {
-        bufferSezione.push(`<p>${pulisciInline(el)}</p>`);
-      }
-    }
-  });
-
-  salvaSezione(); // salva l'ultima sezione rimasta nel buffer
-
-  if (output.length === 0) {
-    return erroreHTML(
-      "Non ho trovato 'PRIMA LETTURA' o 'SECONDA LETTURA' nel testo.<br>" +
-      "Il sito potrebbe aver cambiato la struttura della pagina."
+   Per l'Ufficio delle letture recuperiamo SOLO le due letture,
+   escludendo inni, salmi, versetti, responsori, Te Deum, ecc.
+   
+   Algoritmo:
+   1. Trova l'elemento foglia con testo breve "PRIMA LETTURA"
+   2. Trova l'elemento foglia con testo breve "SECONDA LETTURA"
+   3. Risali per ciascuno al figlio diretto del container
+   4. Itera i figli del container:
+      - Da primaTop → raccoglie in "sezione prima"
+      - Da secondaTop → raccoglie in "sezione seconda"
+      - Al primo marcatore di fine (TE DEUM, RESPONSORIO...) → stop
+   ═══════════════════════════════════════════════════════════════ */
+function extractLetture(contentEl) {
+  // Trova l'elemento foglia che contiene il testo cercato
+  // (senza figli propri, testo breve = è una intestazione di sezione)
+  function findLeaf(pattern) {
+    return Array.from(contentEl.querySelectorAll('*')).find(e =>
+      e.children.length === 0 &&
+      e.textContent.trim().length < 80 &&
+      pattern.test(e.textContent.trim())
     );
   }
 
-  return output.join("\n");
+  const primaLeaf  = findLeaf(/PRIMA\s+LETTURA/i);
+  const secondaLeaf = findLeaf(/SECONDA\s+LETTURA/i);
+
+  // Se non troviamo i marcatori, restituiamo il contenuto integrale
+  // come fallback sicuro (l'utente vede tutto piuttosto che nulla)
+  if (!primaLeaf && !secondaLeaf) return contentEl;
+
+  const primaTop  = primaLeaf  ? topChild(primaLeaf,  contentEl) : null;
+  const secondaTop = secondaLeaf ? topChild(secondaLeaf, contentEl) : null;
+
+  // Marcatori che segnalano la fine della seconda lettura
+  const endPat = /^(TE\s+DEUM|BREVE\s+RESPONSORIO|RESPONSORIO\b|ORAZIONE\b|CONCLUSIONE|LAUDI)/i;
+
+  const result  = document.createElement('div');
+  let mode    = null;  // null | 'prima' | 'seconda'
+  let section = null;
+
+  for (const child of Array.from(contentEl.childNodes)) {
+    // Controlla se questo nodo è (o contiene) il marcatore di sezione
+    const isOrContains = (leaf, top) =>
+      leaf && top &&
+      (child === top || (typeof child.contains === 'function' && child.contains(leaf)));
+
+    if (isOrContains(primaLeaf, primaTop)) {
+      mode = 'prima';
+      section = document.createElement('div');
+      section.className = 'lettura-section';
+      result.appendChild(section);
+      if (child.nodeType === Node.ELEMENT_NODE)
+        section.appendChild(child.cloneNode(true));
+      continue;
+    }
+
+    if (isOrContains(secondaLeaf, secondaTop)) {
+      // Separatore visivo tra le due letture
+      result.appendChild(document.createElement('hr'));
+      mode = 'seconda';
+      section = document.createElement('div');
+      section.className = 'lettura-section';
+      result.appendChild(section);
+      if (child.nodeType === Node.ELEMENT_NODE)
+        section.appendChild(child.cloneNode(true));
+      continue;
+    }
+
+    // Fine della seconda lettura: stop
+    if (mode === 'seconda' && child.nodeType === Node.ELEMENT_NODE) {
+      const t = child.textContent ? child.textContent.trim() : '';
+      if (endPat.test(t)) break;
+    }
+
+    // Aggiunge il nodo alla sezione corrente
+    if (mode && section) {
+      if (child.nodeType === Node.ELEMENT_NODE ||
+          (child.nodeType === Node.TEXT_NODE && child.textContent.trim())) {
+        section.appendChild(child.cloneNode(true));
+      }
+    }
+  }
+
+  // Se l'estrazione ha prodotto contenuto, lo restituiamo;
+  // altrimenti fallback sul contenuto integrale
+  return result.childElementCount > 0 ? result : contentEl;
 }
 
-// ─── HELPER DI PULIZIA ───────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════
+   POST-PROCESSING: STILI SEMANTICI
+   ═══════════════════════════════════════════════════════════════
 
-// Restituisce solo il testo dell'elemento (senza tag)
-function pulisciTesto(el) {
-  return el.textContent.trim()
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-// Restituisce l'innerHTML ma solo con i tag inline utili (strong, em, br)
-function pulisciInline(el) {
-  // Clona per non modificare il DOM originale
-  const clone = el.cloneNode(true);
-  // Rimuovi tutti gli attributi
-  clone.querySelectorAll("*").forEach(n => {
-    [...n.attributes].forEach(a => n.removeAttribute(a.name));
+   Aggiunge classi CSS basandosi sul testo degli elementi,
+   dato che non possiamo fare affidamento sulle classi del sito CEI.
+   ═══════════════════════════════════════════════════════════════ */
+function applySemanticStyles(container) {
+  // Rubrica: paragrafi con solo "V." "R." "Ant." ecc. → colore rosso
+  const rubricPat = /^(V\.|R\.|Ant\.|Sal\.|Rit\.)$/;
+  container.querySelectorAll('p').forEach(p => {
+    if (rubricPat.test(p.textContent.trim())) {
+      p.classList.add('rubric');
+    }
   });
-  // Mantieni solo strong, em, br; rimuovi tutto il resto avvolgendo il contenuto
-  // (link, span con stili ecc. diventano testo puro)
-  clone.querySelectorAll("a").forEach(a => {
-    a.replaceWith(document.createTextNode(a.textContent));
-  });
-  clone.querySelectorAll("span").forEach(s => {
-    s.replaceWith(...s.childNodes);
-  });
-  return clone.innerHTML.trim();
-}
 
-function erroreHTML(msg) {
-  return `<p class="errore">⚠️ ${msg}<br><br>
-    Puoi <a id="link-fallback" href="#" target="_blank">aprire la pagina originale →</a></p>`;
-}
-
-// ─── ESTRAZIONE TITOLO ───────────────────────────────────────────────────────
-function estraiTitolo(html, sez) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const h1 = doc.querySelector("h1");
-  if (h1) return h1.textContent.trim();
-  const titoli = { vespri: "Vespri", messa: "Messa del Giorno", letture: "Prima e Seconda Lettura" };
-  return titoli[sez] || "Liturgia del Giorno";
-}
-
-// ─── CARICAMENTO ─────────────────────────────────────────────────────────────
-async function carica(sez) {
-  document.getElementById("titolo").textContent   = "Caricamento…";
-  document.getElementById("contenuto").innerHTML  = '<p class="stato">Recupero il testo…</p>';
-
-  const url = urlPerSezione(sez);
-  document.getElementById("link-orig").href = url;
-
-  try {
-    const html      = await scaricaHTML(url);
-    const titolo    = estraiTitolo(html, sez);
-    const contenuto = estraiETrasforma(html, sez);
-
-    document.getElementById("titolo").textContent = titolo;
-    document.getElementById("contenuto").innerHTML = contenuto;
-
-    // Aggiorna il link fallback dentro il messaggio di errore se presente
-    const lb = document.getElementById("link-fallback");
-    if (lb) lb.href = url;
-
-  } catch (err) {
-    document.getElementById("titolo").textContent = "Errore di rete";
-    document.getElementById("contenuto").innerHTML =
-      `<p class="errore">⚠️ Impossibile caricare il contenuto.<br>
-       Controlla la connessione o <a href="${urlPerSezione(sez)}" target="_blank">apri il sito originale</a>.<br><br>
-       Dettaglio tecnico: ${err.message}</p>`;
+  // Sottotitolo liturgico: il primo paragrafo breve in MAIUSCOLO
+  // che identifica la settimana liturgica
+  const firstP = container.querySelector('p:not(.rubric)');
+  if (firstP) {
+    const t = firstP.textContent.trim();
+    if (
+      t.length < 120 &&
+      (/SETTIMANA/i.test(t) || /SOLENNIT/i.test(t) || /DOMENICA/i.test(t) || /FESTA/i.test(t))
+    ) {
+      firstP.classList.add('liturgy-subtitle');
+    }
   }
 }
 
-// ─── CAMBIO TAB ──────────────────────────────────────────────────────────────
-function cambia(el) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("attivo"));
-  el.classList.add("attivo");
-  carica(el.dataset.sez);
+/* ═══════════════════════════════════════════════════════════════
+   PIPELINE DI ESTRAZIONE COMPLETA
+   ═══════════════════════════════════════════════════════════════ */
+function extractContent(rawHtml, tab) {
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+
+  // 1. Trova il container del contenuto
+  const content = findContentEl(doc);
+
+  // 2. Rimuovi elementi non testuali
+  cleanEl(content);
+
+  // 3. Rimuovi sezioni alternative (Oppure:) per tutti i tab
+  removeAlternatives(content);
+
+  // 4. Per l'Ufficio: estrai solo PRIMA e SECONDA LETTURA
+  if (tab === 'ufficio') {
+    return extractLetture(content);
+  }
+
+  // Per Vespri e Messa: restituisci il contenuto pulito integrale
+  return content;
 }
 
-// ─── AVVIO ───────────────────────────────────────────────────────────────────
-document.getElementById("data-oggi").textContent = dataLeggibile();
-carica("vespri");
+/* ═══════════════════════════════════════════════════════════════
+   GESTIONE UI
+   ═══════════════════════════════════════════════════════════════ */
+const elLoading = document.getElementById('state-loading');
+const elError   = document.getElementById('state-error');
+const elLiturgy = document.getElementById('liturgy');
+const elDate    = document.getElementById('header-date');
+const elTitle   = document.getElementById('header-title');
+
+function showLoading() {
+  elLoading.style.display = '';
+  elError.style.display   = 'none';
+  elLiturgy.style.display = 'none';
+}
+
+function showContent(node) {
+  elLoading.style.display = 'none';
+  elError.style.display   = 'none';
+  elLiturgy.innerHTML     = '';
+
+  if (typeof node === 'string') {
+    elLiturgy.innerHTML = node;
+  } else {
+    elLiturgy.appendChild(node);
+  }
+
+  // Applica stili semantici dopo l'inserimento nel DOM
+  applySemanticStyles(elLiturgy);
+
+  elLiturgy.style.display = '';
+
+  // Torna in cima alla pagina ad ogni cambio di tab
+  document.getElementById('scroll-area').scrollTop = 0;
+}
+
+function showError(msg, url) {
+  elLoading.style.display = 'none';
+  elLiturgy.style.display = 'none';
+  elError.innerHTML = `
+    <strong>Errore nel caricamento</strong>
+    ${msg}
+    <br><br>
+    <a href="${url}" target="_blank" rel="noopener noreferrer">Apri il sito originale →</a>
+  `;
+  elError.style.display = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TITOLI DEI TAB
+   ═══════════════════════════════════════════════════════════════ */
+const TAB_TITLES = {
+  vespri:  'Vespri',
+  messa:   'Messa del Giorno',
+  ufficio: "Letture dell'Ufficio"
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER PRINCIPALE
+   ═══════════════════════════════════════════════════════════════ */
+async function renderTab(tab) {
+  showLoading();
+  elTitle.textContent = TAB_TITLES[tab];
+
+  const ds = getDateStr();
+  elDate.textContent = formatDateLabel(ds);
+
+  try {
+    const rawHtml = await fetchPage(tab, ds);
+    const contentNode = extractContent(rawHtml, tab);
+    showContent(contentNode);
+  } catch (err) {
+    showError(err.message, buildUrl(tab, ds));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NAVIGAZIONE TRA TAB
+   ═══════════════════════════════════════════════════════════════ */
+function switchTab(tab) {
+  if (tab === activeTab) return; // già attivo, nessuna azione
+  activeTab = tab;
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  renderTab(tab);
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   AVVIO
+   Mostra i Vespri come schermata iniziale predefinita.
+   ═══════════════════════════════════════════════════════════════ */
+switchTab('vespri');
 </script>
 </body>
 </html>
