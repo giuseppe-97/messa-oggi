@@ -362,7 +362,8 @@
 
    ═══════════════════════════════════════════════════════════════ */
 
-const PROXY = 'https://yellow-king-c720.giuseppemc.workers.dev/?url=';
+const PROXY = 'https://corsproxy.io/?url=';
+// const PROXY = 'https://IL-TUO-WORKER.workers.dev/?url=';
 
 const CEI_BASE = 'https://www.chiesacattolica.it';
 
@@ -472,20 +473,44 @@ async function fetchPage(tab, ds) {
    certamente funzionerà su questo sito.
    ═══════════════════════════════════════════════════════════════ */
 function findContentEl(doc) {
+  // Strategia 1: selettori CSS tipici di WordPress e temi liturgici.
   const selectors = [
-    '.entry-content',
-    'article .content',
-    '.post-content',
-    'main article',
-    'article',
-    'main'
+    '.entry-content', '.post-entry', '.post-content',
+    '.page-content',  '.single-content', 'article .content',
+    '#main .content', 'main article', 'article', 'main'
   ];
   for (const s of selectors) {
     const el = doc.querySelector(s);
-    // Valido solo se contiene testo liturgico significativo (> 300 caratteri)
     if (el && el.textContent.trim().length > 300) return el;
   }
-  // Fallback estremo: tutto il body
+
+  // Strategia 2: ancora sull'h1 liturgico.
+  // Se il tema non usa classi standard, l'h1 con il titolo dell'ora
+  // è un punto fisso affidabile su cui appoggiarsi.
+  const knownTitles = ['Vespri', 'Messa', 'Ufficio delle letture'];
+  for (const h1 of Array.from(doc.querySelectorAll('h1'))) {
+    if (knownTitles.some(t => h1.textContent.includes(t))) {
+      let el = h1.parentElement;
+      while (el && el !== doc.body) {
+        if (el.textContent.trim().length > 500) return el;
+        el = el.parentElement;
+      }
+    }
+  }
+
+  // Strategia 3: heuristica testuale.
+  // Il primo div con testo abbondante che contiene marker liturgici.
+  for (const el of Array.from(doc.querySelectorAll('div, section'))) {
+    if (
+      el !== doc.body &&
+      el.textContent.trim().length > 400 &&
+      /\b(V\.|R\.|Ant\.|SALMO|INNO|LETTURA|CANTICO)\b/i.test(el.textContent)
+    ) {
+      return el;
+    }
+  }
+
+  // Fallback: body intero. Non ideale, ma mostra sempre qualcosa.
   return doc.body;
 }
 
@@ -773,7 +798,9 @@ function showContent(node) {
   // Applica stili semantici dopo l'inserimento nel DOM
   applySemanticStyles(elLiturgy);
 
-  elLiturgy.style.display = '';
+  // FIX: usare 'block' e non '' — impostare '' rimuove lo stile inline
+  // e cede il controllo al CSS, che ha display:none su #liturgy.
+  elLiturgy.style.display = 'block';
 
   // Torna in cima alla pagina ad ogni cambio di tab
   document.getElementById('scroll-area').scrollTop = 0;
@@ -788,7 +815,9 @@ function showError(msg, url) {
     <br><br>
     <a href="${url}" target="_blank" rel="noopener noreferrer">Apri il sito originale →</a>
   `;
-  elError.style.display = '';
+  // FIX: stesso motivo — 'block' esplicito, non '' che lascerebbe
+  // il controllo al CSS (display:none su #state-error).
+  elError.style.display = 'block';
 }
 
 /* ═══════════════════════════════════════════════════════════════
