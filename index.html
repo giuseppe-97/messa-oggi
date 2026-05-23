@@ -347,19 +347,8 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════
-   CONFIGURAZIONE
-   ═══════════════════════════════════════════════════════════════
-
-   PROXY_URL: l'URL del proxy CORS da usare.
-
-   Opzione A (immediata, nessun setup):
-     corsproxy.io — proxy pubblico gratuito, funziona subito.
-     Rate limit: abbondante per uso personale quotidiano.
-
-   Opzione B (consigliata per uso stabile):
-     Il tuo Cloudflare Worker (vedi worker.js incluso).
-     Una volta deployato, sostituisci la riga PROXY con il tuo URL.
-
+   CONFIGURAZIONE — sostituisci PROXY con il tuo Cloudflare Worker
+   se lo hai già deployato; altrimenti corsproxy.io funziona subito.
    ═══════════════════════════════════════════════════════════════ */
 
 const PROXY = 'https://corsproxy.io/?url=';
@@ -465,156 +454,198 @@ async function fetchPage(tab, ds) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   TROVA IL CONTENITORE PRINCIPALE
+   HELPER: trova il figlio diretto di container che contiene el
+   ═══════════════════════════════════════════════════════════════ */
+function topChild(el, container) {
+  let curr = el;
+  while (curr && curr.parentElement !== container) curr = curr.parentElement;
+  return (curr && curr.parentElement === container) ? curr : null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ESTRAZIONE PRIMARIA: H1-BOUNDARY
    ═══════════════════════════════════════════════════════════════
 
-   Cascata di selettori CSS dal più specifico al più generico.
-   ".entry-content" è la convenzione WordPress standard e quasi
-   certamente funzionerà su questo sito.
+   Perché questa strategia è più robusta del selettore CSS:
+   - I nomi delle classi CSS (es. .entry-content) possono cambiare
+     con un aggiornamento del tema WordPress senza preavviso.
+   - Il titolo liturgico dell'ora (h1 "Vespri", "Messa del Giorno",
+     "Ufficio delle letture") è contenuto stabile: cambierebbe solo
+     se il sito CEI cambia la struttura del testo liturgico stesso.
+
+   La funzione:
+   1. Trova l'h1 con il titolo atteso per il tab corrente
+   2. Clona l'h1 e tutti i suoi fratelli successivi (nextElementSibling)
+      — questo cattura tutto il testo liturgico escludendo la
+      navigazione e il breadcrumb che stanno PRIMA dell'h1
+   3. Si ferma quando incontra: la sezione "Condividi" (social sharing),
+      "Memoria principale/facoltativa" (seconda opzione della Messa),
+      o il footer della pagina
+   ═══════════════════════════════════════════════════════════════ */
+
+// Titoli h1 attesi per ogni tab. L'ordine conta: il primo match vince.
+const H1_TITLES = {
+  vespri:  ['Vespri'],
+  messa:   ['Messa del Giorno', 'Messa del giorno'],
+  ufficio: ['Ufficio delle letture', 'Ufficio delle Letture']
+};
+
+function extractFromH1(doc, tab) {
+  const titles = H1_TITLES[tab] || [];
+
+  // Trova l'h1 che corrisponde esattamente a uno dei titoli attesi
+  const h1 = Array.from(doc.querySelectorAll('h1')).find(el =>
+    titles.some(t => el.textContent.trim() === t ||
+                     el.textContent.trim().toLowerCase() === t.toLowerCase())
+  );
+  if (!h1) return null;
+
+  // Decide quando fermare la raccolta dei fratelli
+  function isStopEl(el) {
+    const text = (el.textContent || '').trim();
+    const tag  = el.tagName || '';
+    return (
+      text === 'Condividi' ||
+      /^Memoria (principale|facoltativa)/i.test(text) ||
+      tag === 'FOOTER' ||
+      (typeof el.id === 'string' && el.id.toLowerCase() === 'footer') ||
+      (typeof el.className === 'string' && /\bfooter\b/.test(el.className))
+    );
+  }
+
+  const result = document.createElement('div');
+  result.appendChild(h1.cloneNode(true)); // includi l'h1 stesso
+
+  let curr = h1.nextElementSibling;
+  let count = 0;
+  while (curr) {
+    if (isStopEl(curr)) break;
+    result.appendChild(curr.cloneNode(true));
+    curr = curr.nextElementSibling;
+    count++;
+  }
+
+  // Se l'h1 è annidato in un div (ha pochissimi o zero fratelli),
+  // risaliamo di un livello e ripetiamo la raccolta dal genitore.
+  if (count < 3 && result.textContent.trim().length < 400) {
+    const parent = h1.parentElement;
+    if (parent && parent.tagName !== 'BODY') {
+      const fallbackResult = document.createElement('div');
+      let c = parent;
+      while (c) {
+        if (isStopEl(c)) break;
+        fallbackResult.appendChild(c.cloneNode(true));
+        c = c.nextElementSibling;
+      }
+      if (fallbackResult.textContent.trim().length > result.textContent.trim().length)
+        return fallbackResult;
+    }
+  }
+
+  return result;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FALLBACK CSS: usato solo se extractFromH1 fallisce
    ═══════════════════════════════════════════════════════════════ */
 function findContentEl(doc) {
-  // Strategia 1: selettori CSS tipici di WordPress e temi liturgici.
   const selectors = [
     '.entry-content', '.post-entry', '.post-content',
-    '.page-content',  '.single-content', 'article .content',
-    '#main .content', 'main article', 'article', 'main'
+    '.page-content',  '.single-content', 'main article', 'article', 'main'
   ];
   for (const s of selectors) {
     const el = doc.querySelector(s);
     if (el && el.textContent.trim().length > 300) return el;
   }
-
-  // Strategia 2: ancora sull'h1 liturgico.
-  // Se il tema non usa classi standard, l'h1 con il titolo dell'ora
-  // è un punto fisso affidabile su cui appoggiarsi.
-  const knownTitles = ['Vespri', 'Messa', 'Ufficio delle letture'];
-  for (const h1 of Array.from(doc.querySelectorAll('h1'))) {
-    if (knownTitles.some(t => h1.textContent.includes(t))) {
-      let el = h1.parentElement;
-      while (el && el !== doc.body) {
-        if (el.textContent.trim().length > 500) return el;
-        el = el.parentElement;
-      }
-    }
-  }
-
-  // Strategia 3: heuristica testuale.
-  // Il primo div con testo abbondante che contiene marker liturgici.
-  for (const el of Array.from(doc.querySelectorAll('div, section'))) {
-    if (
-      el !== doc.body &&
-      el.textContent.trim().length > 400 &&
-      /\b(V\.|R\.|Ant\.|SALMO|INNO|LETTURA|CANTICO)\b/i.test(el.textContent)
-    ) {
-      return el;
-    }
-  }
-
-  // Fallback: body intero. Non ideale, ma mostra sempre qualcosa.
   return doc.body;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PULIZIA ELEMENTI NON NECESSARI
+   PULIZIA ELEMENTI NON TESTUALI
    ═══════════════════════════════════════════════════════════════
 
-   Rimuoviamo tutti gli elementi che non fanno parte del testo
-   liturgico: immagini, social sharing, controllo grandezza testo,
-   breadcrumb, link di stampa, ecc.
+   NOTA: non rimuoviamo nav/header/footer/aside per selettore tag,
+   perché extractFromH1 esclude già a monte tutto ciò che precede
+   l'h1 (navigazione, breadcrumb). Rimuoverli qui causerebbe falsi
+   positivi se il sito CEI usasse quei tag per wrappare contenuto
+   liturgico legittimo.
    ═══════════════════════════════════════════════════════════════ */
 function cleanEl(el) {
-  // Rimozione per selettore CSS
   const cssToRemove = [
-    'img', 'figure', 'picture', 'video', 'iframe',
-    'script', 'style', 'noscript',
-    'nav', 'header', 'footer', 'aside',
-    '[class*="share"]', '[class*="social"]',
-    '[class*="grandezza"]', '[class*="font-size"]',
-    '.addtoany_share_save_container', '.a2a_kit',
-    'a[href*="facebook"]', 'a[href*="twitter"]',
-    'a[href*="mailto"]',
-    // Link con href="#" usati solo come controlli UI (tasto grandezza testo)
-    'a[href="#"]',
-    '.breadcrumb', '.breadcrumbs', '.wp-block-buttons'
+    'img', 'figure', 'picture', 'video', 'iframe', 'script', 'style', 'noscript',
+    '[class*="share"]', '[class*="social"]', '[class*="grandezza"]',
+    '.addtoany_share_save_container', '.a2a_kit', '.wp-block-buttons',
+    'a[href*="facebook"]', 'a[href*="twitter"]', 'a[href*="mailto"]',
+    'a[href="#"]', '.breadcrumb', '.breadcrumbs'
   ];
-
   cssToRemove.forEach(s => {
-    try { el.querySelectorAll(s).forEach(e => e.remove()); }
-    catch (_) {} // Ignora selettori non supportati
+    try { el.querySelectorAll(s).forEach(e => e.remove()); } catch(_) {}
   });
 
-  // Rimozione per contenuto testuale (bottoni e label UI)
-  const utilityTexts = [
+  // Rimozione per testo esatto: bottoni e label UI non liturgici
+  const skipTexts = [
     'Grandezza Testo', 'Condividi', 'Invia', 'Stampa',
     'Facebook', 'Twitter', 'Torna ai risultati',
-    'Lettura a schermo intero', 'Chiudi mappa'
+    'Lettura a schermo intero', 'Chiudi mappa', 'Home'
   ];
-
-  // Elaboriamo dal fondo dell'array per non invalidare gli indici
-  // dopo le rimozioni
   Array.from(el.querySelectorAll('p, div, span, a, li, button'))
     .reverse()
     .forEach(e => {
       const t = e.textContent.trim();
-      if (
-        utilityTexts.some(u => t === u) ||
-        /^A\s+A\s+A$/.test(t) ||  // Controllo grandezza testo "A A A"
-        /^Home$/.test(t)
-      ) {
-        e.remove();
-      }
+      if (skipTexts.some(u => t === u) || /^A\s+A\s+A$/.test(t)) e.remove();
     });
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   HELPER: trova il figlio diretto del container che contiene
-   (o è) l'elemento dato
-   ═══════════════════════════════════════════════════════════════ */
-function topChild(descendant, container) {
-  let curr = descendant;
-  while (curr && curr.parentElement !== container) {
-    curr = curr.parentElement;
-  }
-  return (curr && curr.parentElement === container) ? curr : null;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   RIMOZIONE SEZIONI ALTERNATIVE (Oppure:)
+   RIMOZIONE ALTERNATIVE (Oppure:)
    ═══════════════════════════════════════════════════════════════
 
-   "Oppure:" introduce un testo alternativo equivalente al
-   precedente (tipicamente la versione latina di un inno).
-   
-   Strategia:
-   1. Trova ogni elemento foglia con testo esattamente "Oppure:"
-   2. Risali al figlio diretto del container principale
-   3. Rimuovi da lì fino all'inizio della sezione successiva
-      (riconosciuta da pattern come "1 ant.", "SALMO", ecc.)
+   Versione corretta rispetto alla precedente.
+
+   Il bug precedente: nextSectionPat conteneva solo pattern testuali
+   tipici della Liturgia delle Ore ("1 ant.", "SALMO", ecc.) e non
+   conosceva le sezioni della Messa ("Vangelo", "Sulle offerte",
+   "Dopo la comunione"). Di conseguenza, quando incontrava "Oppure:"
+   nel Salmo Responsoriale della Messa, rimuoveva tutto fino alla
+   fine della pagina — lasciando solo la data prima dell'h1.
+
+   La correzione: si ferma al primo ELEMENTO HEADING (h2, h3, h4, h5)
+   incontrato dopo "Oppure:". Questo funziona per entrambe le strutture:
+   - Messa del Giorno: le sezioni sono in h2/h3 → stop immediato
+   - Liturgia delle Ore: le sezioni sono in testo piano → si usa
+     textSectionPat come secondo criterio di stop
    ═══════════════════════════════════════════════════════════════ */
 function removeAlternatives(el) {
-  // Pattern che segnalano l'inizio di una nuova sezione liturgica
-  const nextSectionPat = /^(\d+\s*ant\.|SALMO\b|CANTICO\b|INNO\b|PRIMA\s+LETTURA|SECONDA\s+LETTURA|RESPONSORIO|ORAZIONE\b|V\.\s|R\.\s|ANT\.)/i;
+  // Pattern testuali per sezioni della Liturgia delle Ore
+  const textSectionPat = /^(\d+\s*ant\.|SALMO\b|CANTICO\b|INNO\b|ANT\.|Ant\.|PRIMA\s+LETTURA|SECONDA\s+LETTURA|RESPONSORIO|ORAZIONE\b)/i;
 
-  // Trova tutti gli elementi foglia con testo "Oppure:" (senza figli propri)
-  // Li elaboriamo dal fondo per non invalidare i riferimenti al DOM
+  // Trova tutti gli elementi foglia con testo esattamente "Oppure:" o "Oppure"
+  // (children.length === 0 = nessun elemento figlio = è un nodo foglia)
   const oppureEls = Array.from(el.querySelectorAll('*'))
     .filter(e => {
       const t = e.textContent.trim();
       return (t === 'Oppure:' || t === 'Oppure') && e.children.length === 0;
     })
-    .reverse();
+    .reverse(); // dal fondo per non invalidare i riferimenti DOM
 
   for (const leaf of oppureEls) {
     const top = topChild(leaf, el);
     if (!top) continue;
 
-    // Raccogliamo top + tutti i fratelli successivi fino alla prossima sezione
     const toRemove = [top];
     let sib = top.nextElementSibling;
 
     while (sib) {
-      const t = sib.textContent ? sib.textContent.trim() : '';
-      if (nextSectionPat.test(t)) break; // trovata la sezione successiva: ci fermiamo
+      // STOP CRITERIO 1: heading HTML (h2, h3, h4, h5)
+      // Gestisce la struttura della Messa del Giorno, dove ogni sezione
+      // (Antifona, Colletta, Vangelo, ecc.) è avvolta in un h2/h3.
+      if (/^H[2-5]$/.test(sib.tagName)) break;
+
+      // STOP CRITERIO 2: pattern testuale della Liturgia delle Ore
+      // Gestisce sezioni come "1 ant.", "SALMO", "Ant.", ecc.
+      const t = (sib.textContent || '').trim();
+      if (textSectionPat.test(t)) break;
+
       toRemove.push(sib);
       sib = sib.nextElementSibling;
     }
@@ -624,24 +655,42 @@ function removeAlternatives(el) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ESTRAZIONE PRIMA E SECONDA LETTURA
+   RIMOZIONE SECONDA OPZIONE (Messa del Giorno)
    ═══════════════════════════════════════════════════════════════
 
-   Per l'Ufficio delle letture recuperiamo SOLO le due letture,
-   escludendo inni, salmi, versetti, responsori, Te Deum, ecc.
-   
-   Algoritmo:
-   1. Trova l'elemento foglia con testo breve "PRIMA LETTURA"
-   2. Trova l'elemento foglia con testo breve "SECONDA LETTURA"
-   3. Risali per ciascuno al figlio diretto del container
-   4. Itera i figli del container:
-      - Da primaTop → raccoglie in "sezione prima"
-      - Da secondaTop → raccoglie in "sezione seconda"
-      - Al primo marcatore di fine (TE DEUM, RESPONSORIO...) → stop
+   La pagina Messa del Giorno può includere più opzioni celebrative:
+   prima la Messa del giorno feriale/festivo, poi le Memorie
+   facoltative dei santi. Mostriamo solo la prima opzione.
+
+   Le Memorie facoltative sono segnalate da un heading h3/h4
+   contenente "MEMORIA FACOLTATIVA" o "MEMORIA PRINCIPALE".
+   Tutto da quel punto in poi viene rimosso.
+
+   Poiché extractFromH1 restituisce un div con tutti i figli
+   come FIGLI DIRETTI (non annidati), possiamo usare l'iterazione
+   sui childNodes diretti — molto più semplice e affidabile.
+   ═══════════════════════════════════════════════════════════════ */
+function removeSecondMassOption(el) {
+  let removing = false;
+  Array.from(el.children).forEach(child => {
+    if (removing) { child.remove(); return; }
+    if (
+      /^H[2-5]$/.test(child.tagName) &&
+      /MEMORIA\s+(FACOLTATIVA|PRINCIPALE)/i.test(child.textContent.trim())
+    ) {
+      removing = true;
+      child.remove();
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ESTRAZIONE PRIMA E SECONDA LETTURA (Ufficio delle letture)
    ═══════════════════════════════════════════════════════════════ */
 function extractLetture(contentEl) {
-  // Trova l'elemento foglia che contiene il testo cercato
-  // (senza figli propri, testo breve = è una intestazione di sezione)
+  // Cerca un elemento foglia (nessun figlio, testo breve) che corrisponde
+  // al titolo della lettura. Il testo < 80 char esclude elementi che
+  // contengono più di una riga (es. paragrafi del testo biblico).
   function findLeaf(pattern) {
     return Array.from(contentEl.querySelectorAll('*')).find(e =>
       e.children.length === 0 &&
@@ -650,25 +699,23 @@ function extractLetture(contentEl) {
     );
   }
 
-  const primaLeaf  = findLeaf(/PRIMA\s+LETTURA/i);
+  const primaLeaf   = findLeaf(/PRIMA\s+LETTURA/i);
   const secondaLeaf = findLeaf(/SECONDA\s+LETTURA/i);
 
-  // Se non troviamo i marcatori, restituiamo il contenuto integrale
-  // come fallback sicuro (l'utente vede tutto piuttosto che nulla)
+  // Se non troviamo i marcatori → fallback: mostra tutto il contenuto
   if (!primaLeaf && !secondaLeaf) return contentEl;
 
   const primaTop  = primaLeaf  ? topChild(primaLeaf,  contentEl) : null;
   const secondaTop = secondaLeaf ? topChild(secondaLeaf, contentEl) : null;
 
-  // Marcatori che segnalano la fine della seconda lettura
+  // Pattern che segnalano la fine della Seconda Lettura
   const endPat = /^(TE\s+DEUM|BREVE\s+RESPONSORIO|RESPONSORIO\b|ORAZIONE\b|CONCLUSIONE|LAUDI)/i;
 
   const result  = document.createElement('div');
-  let mode    = null;  // null | 'prima' | 'seconda'
-  let section = null;
+  let mode      = null;
+  let section   = null;
 
   for (const child of Array.from(contentEl.childNodes)) {
-    // Controlla se questo nodo è (o contiene) il marcatore di sezione
     const isOrContains = (leaf, top) =>
       leaf && top &&
       (child === top || (typeof child.contains === 'function' && child.contains(leaf)));
@@ -678,70 +725,48 @@ function extractLetture(contentEl) {
       section = document.createElement('div');
       section.className = 'lettura-section';
       result.appendChild(section);
-      if (child.nodeType === Node.ELEMENT_NODE)
-        section.appendChild(child.cloneNode(true));
+      if (child.nodeType === Node.ELEMENT_NODE) section.appendChild(child.cloneNode(true));
       continue;
     }
-
     if (isOrContains(secondaLeaf, secondaTop)) {
-      // Separatore visivo tra le due letture
       result.appendChild(document.createElement('hr'));
       mode = 'seconda';
       section = document.createElement('div');
       section.className = 'lettura-section';
       result.appendChild(section);
-      if (child.nodeType === Node.ELEMENT_NODE)
-        section.appendChild(child.cloneNode(true));
+      if (child.nodeType === Node.ELEMENT_NODE) section.appendChild(child.cloneNode(true));
       continue;
     }
-
-    // Fine della seconda lettura: stop
     if (mode === 'seconda' && child.nodeType === Node.ELEMENT_NODE) {
-      const t = child.textContent ? child.textContent.trim() : '';
-      if (endPat.test(t)) break;
+      if (endPat.test((child.textContent || '').trim())) break;
     }
-
-    // Aggiunge il nodo alla sezione corrente
     if (mode && section) {
       if (child.nodeType === Node.ELEMENT_NODE ||
-          (child.nodeType === Node.TEXT_NODE && child.textContent.trim())) {
+         (child.nodeType === Node.TEXT_NODE && child.textContent.trim())) {
         section.appendChild(child.cloneNode(true));
       }
     }
   }
 
-  // Se l'estrazione ha prodotto contenuto, lo restituiamo;
-  // altrimenti fallback sul contenuto integrale
   return result.childElementCount > 0 ? result : contentEl;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   POST-PROCESSING: STILI SEMANTICI
-   ═══════════════════════════════════════════════════════════════
-
-   Aggiunge classi CSS basandosi sul testo degli elementi,
-   dato che non possiamo fare affidamento sulle classi del sito CEI.
+   STILI SEMANTICI POST-RENDERING
    ═══════════════════════════════════════════════════════════════ */
 function applySemanticStyles(container) {
-  // Rubrica: paragrafi con solo "V." "R." "Ant." ecc. → colore rosso
+  // Rubrica (V. R. Ant.): colore rosso tradizionale
   const rubricPat = /^(V\.|R\.|Ant\.|Sal\.|Rit\.)$/;
   container.querySelectorAll('p').forEach(p => {
-    if (rubricPat.test(p.textContent.trim())) {
-      p.classList.add('rubric');
-    }
+    if (rubricPat.test(p.textContent.trim())) p.classList.add('rubric');
   });
 
-  // Sottotitolo liturgico: il primo paragrafo breve in MAIUSCOLO
-  // che identifica la settimana liturgica
+  // Sottotitolo liturgico (settimana, solennità, ecc.): testo piccolo maiuscolo
   const firstP = container.querySelector('p:not(.rubric)');
   if (firstP) {
     const t = firstP.textContent.trim();
-    if (
-      t.length < 120 &&
-      (/SETTIMANA/i.test(t) || /SOLENNIT/i.test(t) || /DOMENICA/i.test(t) || /FESTA/i.test(t))
-    ) {
+    if (t.length < 120 && /SETTIMANA|SOLENNIT|DOMENICA|FESTA|VENERD|LUNED|MARTED|MERCOLED|GIOVED|SABATO/i.test(t))
       firstP.classList.add('liturgy-subtitle');
-    }
   }
 }
 
@@ -751,21 +776,27 @@ function applySemanticStyles(container) {
 function extractContent(rawHtml, tab) {
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
-  // 1. Trova il container del contenuto
-  const content = findContentEl(doc);
+  // 1. Estrazione primaria via H1-boundary (più robusta)
+  let content = extractFromH1(doc, tab);
 
-  // 2. Rimuovi elementi non testuali
-  cleanEl(content);
-
-  // 3. Rimuovi sezioni alternative (Oppure:) per tutti i tab
-  removeAlternatives(content);
-
-  // 4. Per l'Ufficio: estrai solo PRIMA e SECONDA LETTURA
-  if (tab === 'ufficio') {
-    return extractLetture(content);
+  // 2. Fallback CSS se l'h1 non è stato trovato o il risultato è scarso
+  if (!content || content.textContent.trim().length < 200) {
+    const fallback = findContentEl(doc);
+    content = document.createElement('div');
+    // cloneNode garantisce che lavoriamo su un sottoalbero isolato
+    Array.from(fallback.childNodes).forEach(n => content.appendChild(n.cloneNode(true)));
   }
 
-  // Per Vespri e Messa: restituisci il contenuto pulito integrale
+  // 3. Pulizia elementi di UI non liturgici
+  cleanEl(content);
+
+  // 4. Rimozione sezioni alternative (Oppure:) — tutti i tab
+  removeAlternatives(content);
+
+  // 5. Lavorazione specifica per tab
+  if (tab === 'messa')   removeSecondMassOption(content);
+  if (tab === 'ufficio') return extractLetture(content);
+
   return content;
 }
 
