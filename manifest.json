@@ -1,0 +1,14 @@
+{
+  "name": "Cammino · Escrivá",
+  "short_name": "Cammino",
+  "description": "Lettura quotidiana di Cammino di San Josemaría Escrivá",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9F6F0",
+  "theme_color": "#F9F6F0",
+  "start_url": "/",
+  "lang": "it",
+  "icons": [
+    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
