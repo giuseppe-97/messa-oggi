@@ -1,6 +1,24 @@
-[
-  { "capitolo": "Carattere", "numero": 1, "testo": "Non sia la tua vita una vita sterile. — Sii utile. — Lascia traccia. — Illumina con la fiamma della tua fede e del tuo amore. Cancella, con la tua vita d'apostolo, l'impronta viscida e sudicia lasciata dai seminatori impuri dell'odio. — E incendia tutti i cammini della terra con il fuoco di Cristo che porti nel cuore." },
-  { "capitolo": "Carattere", "numero": 2, "testo": "Fossero tali il tuo contegno e la tua conversazione che tutti, nel vederti o nel sentirti parlare, potessero dire: ecco uno che legge la vita di Gesù Cristo." },
-  { "capitolo": "Carattere", "numero": 52, "testo": "Perché, quando giudichi gli altri, metti nella tua critica l'amarezza dei tuoi personali insuccessi?" },
-  { "capitolo": "Direzione", "numero": 60, "testo": "Se non costruiresti, senza architetto, una bella casa per vivere sulla terra, come vuoi innalzare senza Direttore la fortezza della tua santificazione per vivere eternamente nel cielo?" }
-]
+{
+  "name": "Cammino Quotidiano",
+  "short_name": "Cammino",
+  "description": "5 punti al giorno dal testo Cammino di San Josemaría Escrivá.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#a2845e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
