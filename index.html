@@ -2,906 +2,517 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <!--
-    viewport-fit=cover: fa sì che il contenuto occupi tutta la
-    finestra iPhone, incluse le aree delle tacche (notch) e del
-    home indicator. Le safe-area-inset le gestiamo noi via CSS.
-  -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-  <!-- Obbligatorio per la modalità fullscreen da Home Screen su iOS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <!--
-    black-translucent: la status bar diventa trasparente e il
-    contenuto scorre dietro di essa (usiamo il padding-top safe-area).
-    Se preferisci la status bar scura opaca, usa "black".
-  -->
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Liturgia">
-
-  <!-- Icona per il bottone "Aggiungi a Home Screen" di Safari -->
-  <!-- Crea un file icon.png 192×192 px e mettilo nella stessa cartella -->
-  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="apple-mobile-web-app-title" content="Cammino">
   <link rel="manifest" href="manifest.json">
-
-  <title>Liturgia del Giorno</title>
-
+  <link rel="apple-touch-icon" href="icon.png">
+  <title>Cammino · Escrivá</title>
   <style>
-    /* ─────────────────────────────────────────────────
-       VARIABILI TEMA
-       Pergamena calda per la luce, notte sepia per il buio.
-       Il --accent è il bordeaux tradizionale dei libri liturgici.
-    ───────────────────────────────────────────────── */
     :root {
-      --bg:       #faf8f3;
-      --surface:  #f2ede2;
-      --text:     #22190d;
-      --muted:    #8a7d68;
-      --accent:   #6b3416;
-      --rubric:   #8b1a1a;   /* rosso rubrica tradizionale */
-      --border:   #ddd5c5;
-      --tab-bg:   rgba(250, 248, 243, 0.94);
-      /* iOS safe areas: evitano sovrapposizioni con notch e home bar */
-      --safe-top: env(safe-area-inset-top, 0px);
-      --safe-bot: env(safe-area-inset-bottom, 0px);
+      --bg:          #F9F6F0;
+      --bg-card:     #FFFFFF;
+      --text:        #1A1814;
+      --text-mid:    #4A4640;
+      --text-soft:   #8A857E;
+      --accent:      #7A5520;
+      --accent-pale: #F2EAD8;
+      --border:      #E4DDD0;
+      --shadow:      rgba(60, 40, 10, 0.07);
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg:      #181410;
-        --surface: #221d15;
-        --text:    #ede4d0;
-        --muted:   #9a8c76;
-        --accent:  #c87840;
-        --rubric:  #d96060;
-        --border:  #332b1e;
-        --tab-bg:  rgba(24, 20, 16, 0.96);
+        --bg:          #1A1814;
+        --bg-card:     #252118;
+        --text:        #F0EBE0;
+        --text-mid:    #C0B8A8;
+        --text-soft:   #7A7268;
+        --accent:      #C49840;
+        --accent-pale: #2E2518;
+        --border:      #38322A;
+        --shadow:      rgba(0,0,0,0.25);
       }
     }
-
-    /* ─────────────────────────────────────────────────
-       RESET E BASE
-    ───────────────────────────────────────────────── */
-    *, *::before, *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+ 
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+ 
     html, body {
       height: 100%;
-      overflow: hidden;          /* l'unico scroll è quello interno a #scroll-area */
       background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
       color: var(--text);
-      /* -webkit-text-size-adjust evita che iOS ingrandisca automaticamente
-         il testo quando il viewport ruota */
-      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
     }
-
-    /* ─────────────────────────────────────────────────
-       LAYOUT PRINCIPALE
-       Flex verticale: header fisso in cima, area di scroll
-       al centro, tab bar fissa in fondo.
-    ───────────────────────────────────────────────── */
-    #app {
+ 
+    .app {
+      height: 100%;
       display: flex;
       flex-direction: column;
-      height: 100%;
-      /* Padding per la status bar iOS (tacca superiore) */
-      padding-top: var(--safe-top);
+      padding-top: env(safe-area-inset-top, 44px);
+      padding-bottom: env(safe-area-inset-bottom, 34px);
     }
-
-    /* ─────────────────────────────────────────────────
-       HEADER
-    ───────────────────────────────────────────────── */
-    #header {
+ 
+    /* ── HEADER ── */
+    .header {
       flex-shrink: 0;
-      padding: 14px 20px 10px;
+      padding: 18px 22px 14px;
       border-bottom: 1px solid var(--border);
       background: var(--bg);
     }
-    #header-date {
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.7px;
-      text-transform: uppercase;
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      margin-bottom: 3px;
-    }
-    #header-title {
-      font-size: 22px;
-      font-weight: 700;
-      font-family: Georgia, 'Times New Roman', serif;
-      color: var(--accent);
-      letter-spacing: -0.3px;
-    }
-
-    /* ─────────────────────────────────────────────────
-       AREA DI SCORRIMENTO
-    ───────────────────────────────────────────────── */
-    #scroll-area {
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch; /* scroll momentum su iOS */
-      /* Padding inferiore: altezza tab bar + safe area + margine */
-      padding: 28px 20px calc(64px + var(--safe-bot) + 20px);
-    }
-
-    /* ─────────────────────────────────────────────────
-       STATO: CARICAMENTO
-    ───────────────────────────────────────────────── */
-    #state-loading {
+    .header-top {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      padding: 72px 24px;
-      color: var(--muted);
-      font-family: -apple-system, sans-serif;
-      font-size: 14px;
-      gap: 16px;
-    }
-    .spinner {
-      width: 28px;
-      height: 28px;
-      border: 2.5px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ─────────────────────────────────────────────────
-       STATO: ERRORE
-    ───────────────────────────────────────────────── */
-    #state-error {
-      display: none;
-      padding: 22px;
-      border: 1px solid var(--rubric);
-      border-radius: 12px;
-      background: var(--surface);
-      color: var(--rubric);
-      font-family: -apple-system, sans-serif;
-      font-size: 14px;
-      line-height: 1.75;
-    }
-    #state-error a {
-      color: var(--accent);
-      text-decoration: underline;
-    }
-    #state-error strong {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 15px;
-    }
-
-    /* ─────────────────────────────────────────────────
-       CONTENUTO LITURGICO
-       Tipografia ottimizzata per la lettura spirituale
-       su schermo piccolo.
-    ───────────────────────────────────────────────── */
-    #liturgy {
-      display: none;
-      max-width: 620px;
-      margin: 0 auto;
-    }
-
-    /* Tutti gli elementi ereditano il font serif dal contenitore */
-    #liturgy * {
-      font-family: Georgia, 'Times New Roman', serif;
-    }
-
-    /* Testo principale dei salmi, letture, inni */
-    #liturgy p {
-      font-size: 17.5px;
-      line-height: 1.95;
+      justify-content: space-between;
       margin-bottom: 6px;
-      color: var(--text);
     }
-
-    /* Titolo h1 dell'ora (Vespri, Messa, ecc.): già nell'header, lo nascondiamo */
-    #liturgy h1 {
-      display: none;
+    .brand {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
     }
-
-    /* h2/h3/h4: titoli di sezione (INNO, SALMO, CANTICO...) */
-    #liturgy h2, #liturgy h3, #liturgy h4 {
+    .badge-day {
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 1.1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-family: -apple-system, sans-serif;
-      margin: 28px 0 10px;
+      color: var(--text-soft);
+      background: var(--accent-pale);
+      padding: 3px 9px;
+      border-radius: 20px;
     }
-
-    /* Separatore orizzontale tra prima e seconda lettura */
-    #liturgy hr {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 32px 0;
+    .date-line {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.15;
     }
-
-    /* Citazioni bibliche di riferimento (Es. "Eb 3, 13") */
-    #liturgy em {
-      color: var(--muted);
-      font-style: italic;
-      font-size: 15px;
-    }
-
-    /* Rubrica liturgica: V. R. Ant.
-       Aggiunte via JS dopo il rendering, per colorarle di rosso. */
-    #liturgy p.rubric {
-      color: var(--rubric);
-      font-weight: 600;
-      font-size: 14.5px;
-      margin-top: 14px;
-      margin-bottom: 1px;
-    }
-
-    /* Sottotitolo liturgico (es. "VII SETTIMANA DI PASQUA")
-       che appare come primo paragrafo visibile dopo h1 */
-    #liturgy p.liturgy-subtitle {
-      font-size: 10.5px;
-      font-family: -apple-system, sans-serif;
-      letter-spacing: 0.7px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 28px;
+    .chapter-line {
+      margin-top: 3px;
+      font-size: 14px;
+      color: var(--text-mid);
       font-weight: 500;
     }
-
-    /* Intestazione delle sezioni PRIMA / SECONDA LETTURA */
-    #liturgy .lettura-section > *:first-child {
-      display: block;
-      font-size: 10.5px;
-      font-family: -apple-system, sans-serif;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--rubric);
-      font-weight: 700;
-      margin-bottom: 18px;
-      /* Usa style serif anche per la label */
-      font-style: normal;
+    .chapter-line .chapter-icon {
+      color: var(--accent);
+      margin-right: 4px;
     }
-
-    /* ─────────────────────────────────────────────────
-       TAB BAR iOS
-       Backdrop blur per l'effetto frosted-glass tipico di iOS.
-    ───────────────────────────────────────────────── */
-    #tab-bar {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: calc(56px + var(--safe-bot));
-      padding-bottom: var(--safe-bot);
-      background: var(--tab-bg);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border-top: 1px solid var(--border);
-      display: flex;
-      z-index: 100;
-    }
-    .tab {
+ 
+    /* ── CONTENT ── */
+    .content {
       flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px 14px 8px;
+    }
+ 
+    /* ── POINT CARDS ── */
+    .point-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 16px 16px 14px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 13px;
+      align-items: flex-start;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+    .point-num {
+      flex-shrink: 0;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 8px;
+      background: var(--accent-pale);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .point-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .point-text {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 15.5px;
+      line-height: 1.68;
+      color: var(--text);
+    }
+    .point-text em {
+      font-style: italic;
+    }
+ 
+    /* ── LOADING / ERROR ── */
+    .state-box {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 2px;
-      padding-top: 6px;
-      border: none;
-      background: none;
-      color: var(--muted);
-      font-family: -apple-system, 'Helvetica Neue', sans-serif;
-      cursor: pointer;
-      /* Rimuove il flash blu al tap su iOS Safari */
-      -webkit-tap-highlight-color: transparent;
-      transition: color 0.12s ease;
-      user-select: none;
+      gap: 14px;
+      padding: 60px 24px;
+      color: var(--text-soft);
+      text-align: center;
     }
-    .tab.active {
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .state-box p {
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .retry-btn {
+      margin-top: 4px;
+      background: var(--accent-pale);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 600;
       color: var(--accent);
+      cursor: pointer;
     }
-    .tab-icon {
+ 
+    /* ── FOOTER NAV ── */
+    .footer {
+      flex-shrink: 0;
+      padding: 10px 20px 6px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .nav-btn {
+      width: 46px;
+      height: 46px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 50%;
       font-size: 22px;
-      line-height: 1;
+      color: var(--text-mid);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.12s;
+      box-shadow: 0 1px 4px var(--shadow);
     }
-    .tab-label {
-      font-size: 10px;
-      letter-spacing: 0.1px;
-      font-weight: 500;
+    .nav-btn:active { opacity: 0.55; }
+    .nav-btn:disabled { opacity: 0.25; cursor: default; }
+    .footer-center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .progress-bar-wrap {
+      width: 100%;
+      max-width: 180px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .progress-label {
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+    .today-btn {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      letter-spacing: 0.02em;
     }
   </style>
 </head>
-
 <body>
-<div id="app">
-
-  <header id="header">
-    <div id="header-date">—</div>
-    <div id="header-title">Liturgia del Giorno</div>
-  </header>
-
-  <main id="scroll-area">
-    <div id="state-loading">
-      <div class="spinner"></div>
-      Caricamento testo liturgico…
+<div class="app">
+ 
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div class="brand">Cammino · Escrivá</div>
+      <div class="badge-day" id="badge-day">—</div>
     </div>
-    <div id="state-error"></div>
-    <div id="liturgy"></div>
-  </main>
-
-  <nav id="tab-bar">
-    <button class="tab" data-tab="vespri">
-      <span class="tab-icon">🕯️</span>
-      <span class="tab-label">Vespri</span>
-    </button>
-    <button class="tab" data-tab="messa">
-      <span class="tab-icon">✝️</span>
-      <span class="tab-label">Messa</span>
-    </button>
-    <button class="tab" data-tab="ufficio">
-      <span class="tab-icon">📖</span>
-      <span class="tab-label">Letture</span>
-    </button>
-  </nav>
-
+    <div class="date-line" id="date-line">—</div>
+    <div class="chapter-line" id="chapter-line">
+      <span class="chapter-icon">✦</span><span id="chapter-name">Caricamento…</span>
+    </div>
+  </div>
+ 
+  <!-- PUNTI -->
+  <div class="content" id="content">
+    <div class="state-box">
+      <div class="spinner"></div>
+      <p>Caricamento in corso…</p>
+    </div>
+  </div>
+ 
+  <!-- NAV -->
+  <div class="footer">
+    <button class="nav-btn" id="btn-prev" onclick="navigate(-1)" title="Giorno precedente">‹</button>
+    <div class="footer-center">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <div class="progress-label" id="progress-label">—</div>
+      <button class="today-btn" id="today-btn" onclick="goToToday()" style="display:none">↩ Vai ad oggi</button>
+    </div>
+    <button class="nav-btn" id="btn-next" onclick="navigate(1)" title="Giorno successivo">›</button>
+  </div>
+ 
 </div>
-
+ 
 <script>
-/* ═══════════════════════════════════════════════════════════════
-   CONFIGURAZIONE — sostituisci PROXY con il tuo Cloudflare Worker
-   se lo hai già deployato; altrimenti corsproxy.io funziona subito.
-   ═══════════════════════════════════════════════════════════════ */
-
-const PROXY = 'https://corsproxy.io/?url=';
-// const PROXY = 'https://IL-TUO-WORKER.workers.dev/?url=';
-
-const CEI_BASE = 'https://www.chiesacattolica.it';
-
-/* ═══════════════════════════════════════════════════════════════
-   STATO APPLICAZIONE
-   ═══════════════════════════════════════════════════════════════ */
-let activeTab = null;
-const memCache = {};  // Cache in memoria per la sessione corrente
-
-/* ═══════════════════════════════════════════════════════════════
-   UTILITÀ DATA
-   ═══════════════════════════════════════════════════════════════
-
-   Usiamo Intl.DateTimeFormat con timeZone 'Europe/Rome' per essere
-   certi di usare la data liturgica corretta anche se l'iPhone è
-   fisicamente in un altro fuso orario.
-   ═══════════════════════════════════════════════════════════════ */
-function getDateStr() {
-  const parts = new Intl.DateTimeFormat('it-IT', {
-    timeZone: 'Europe/Rome',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date());
-  const v = k => parts.find(p => p.type === k).value;
-  return `${v('year')}${v('month')}${v('day')}`;
-}
-
-function formatDateLabel(ds) {
-  // ds è nel formato YYYYMMDD
-  const iso = `${ds.slice(0,4)}-${ds.slice(4,6)}-${ds.slice(6,8)}T12:00:00`;
-  return new Date(iso).toLocaleDateString('it-IT', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   URL BUILDER
-   ═══════════════════════════════════════════════════════════════
-
-   Gli URL sono completamente deterministici dalla data.
-   Non è necessario fare scraping della homepage per trovare i link.
-   Il parametro ?data-liturgia=YYYYMMDD è stabile da anni.
-   ═══════════════════════════════════════════════════════════════ */
-function buildUrl(tab, ds) {
-  switch (tab) {
-    case 'messa':
-      return `${CEI_BASE}/liturgia-del-giorno/?data-liturgia=${ds}`;
-    case 'vespri':
-      return `${CEI_BASE}/la-liturgia-delle-ore/?data-liturgia=${ds}&ora=vespri`;
-    case 'ufficio':
-      return `${CEI_BASE}/la-liturgia-delle-ore/?data-liturgia=${ds}&ora=ufficio-delle-letture`;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   FETCH CON CACHE A DUE LIVELLI
-   ═══════════════════════════════════════════════════════════════
-
-   1° livello: cache in memoria (velocissima, dura la sessione)
-   2° livello: localStorage con chiave {tab}_{YYYYMMDD}
-
-   Le voci di giorni precedenti vengono cancellate automaticamente
-   al primo accesso del giorno nuovo, così lo storage non si riempie.
-   ═══════════════════════════════════════════════════════════════ */
-async function fetchPage(tab, ds) {
-  const key = `${tab}_${ds}`;
-
-  // Cache memoria
-  if (memCache[key]) return memCache[key];
-
-  // Cache localStorage
-  const stored = localStorage.getItem(key);
-  if (stored) {
-    memCache[key] = stored;
-    return stored;
-  }
-
-  // Pulizia chiavi di giorni precedenti (mantieni solo oggi)
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const k = localStorage.key(i);
-    if (k && !k.endsWith(`_${ds}`)) localStorage.removeItem(k);
-  }
-
-  // Fetch reale tramite proxy CORS
-  const url = buildUrl(tab, ds);
-  const res = await fetch(PROXY + encodeURIComponent(url));
-  if (!res.ok) throw new Error(`Risposta HTTP ${res.status} dal server`);
-
-  const html = await res.text();
-
-  // Salva in entrambe le cache
-  memCache[key] = html;
-  try { localStorage.setItem(key, html); } catch (_) {
-    // localStorage pieno o non disponibile: prosegui senza cache persistente
-  }
-
-  return html;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   HELPER: trova il figlio diretto di container che contiene el
-   ═══════════════════════════════════════════════════════════════ */
-function topChild(el, container) {
-  let curr = el;
-  while (curr && curr.parentElement !== container) curr = curr.parentElement;
-  return (curr && curr.parentElement === container) ? curr : null;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   ESTRAZIONE PRIMARIA: H1-BOUNDARY
-   ═══════════════════════════════════════════════════════════════
-
-   Perché questa strategia è più robusta del selettore CSS:
-   - I nomi delle classi CSS (es. .entry-content) possono cambiare
-     con un aggiornamento del tema WordPress senza preavviso.
-   - Il titolo liturgico dell'ora (h1 "Vespri", "Messa del Giorno",
-     "Ufficio delle letture") è contenuto stabile: cambierebbe solo
-     se il sito CEI cambia la struttura del testo liturgico stesso.
-
-   La funzione:
-   1. Trova l'h1 con il titolo atteso per il tab corrente
-   2. Clona l'h1 e tutti i suoi fratelli successivi (nextElementSibling)
-      — questo cattura tutto il testo liturgico escludendo la
-      navigazione e il breadcrumb che stanno PRIMA dell'h1
-   3. Si ferma quando incontra: la sezione "Condividi" (social sharing),
-      "Memoria principale/facoltativa" (seconda opzione della Messa),
-      o il footer della pagina
-   ═══════════════════════════════════════════════════════════════ */
-
-// Titoli h1 attesi per ogni tab. L'ordine conta: il primo match vince.
-const H1_TITLES = {
-  vespri:  ['Vespri'],
-  messa:   ['Messa del Giorno', 'Messa del giorno'],
-  ufficio: ['Ufficio delle letture', 'Ufficio delle Letture']
-};
-
-function extractFromH1(doc, tab) {
-  const titles = H1_TITLES[tab] || [];
-
-  // Trova l'h1 che corrisponde esattamente a uno dei titoli attesi
-  const h1 = Array.from(doc.querySelectorAll('h1')).find(el =>
-    titles.some(t => el.textContent.trim() === t ||
-                     el.textContent.trim().toLowerCase() === t.toLowerCase())
-  );
-  if (!h1) return null;
-
-  // Decide quando fermare la raccolta dei fratelli
-  function isStopEl(el) {
-    const text = (el.textContent || '').trim();
-    const tag  = el.tagName || '';
-    return (
-      text === 'Condividi' ||
-      /^Memoria (principale|facoltativa)/i.test(text) ||
-      tag === 'FOOTER' ||
-      (typeof el.id === 'string' && el.id.toLowerCase() === 'footer') ||
-      (typeof el.className === 'string' && /\bfooter\b/.test(el.className))
-    );
-  }
-
-  const result = document.createElement('div');
-  result.appendChild(h1.cloneNode(true)); // includi l'h1 stesso
-
-  let curr = h1.nextElementSibling;
-  let count = 0;
-  while (curr) {
-    if (isStopEl(curr)) break;
-    result.appendChild(curr.cloneNode(true));
-    curr = curr.nextElementSibling;
-    count++;
-  }
-
-  // Se l'h1 è annidato in un div (ha pochissimi o zero fratelli),
-  // risaliamo di un livello e ripetiamo la raccolta dal genitore.
-  if (count < 3 && result.textContent.trim().length < 400) {
-    const parent = h1.parentElement;
-    if (parent && parent.tagName !== 'BODY') {
-      const fallbackResult = document.createElement('div');
-      let c = parent;
-      while (c) {
-        if (isStopEl(c)) break;
-        fallbackResult.appendChild(c.cloneNode(true));
-        c = c.nextElementSibling;
-      }
-      if (fallbackResult.textContent.trim().length > result.textContent.trim().length)
-        return fallbackResult;
+// ═══════════════════════════════════════════════════
+//  CONFIGURAZIONE — sostituisci con il tuo worker URL
+// ═══════════════════════════════════════════════════
+const WORKER_URL = 'https://YOUR_WORKER_NAME.workers.dev';
+ 
+// ═══════════════════════════════════════════════════
+//  CAPITOLI (46 capitoli, 999 punti totali)
+// ═══════════════════════════════════════════════════
+const CHAPTERS = [
+  { name: "Carattere",                  start: 1,   end: 55  },
+  { name: "Direzione",                  start: 56,  end: 80  },
+  { name: "Orazione",                   start: 81,  end: 117 },
+  { name: "Santa purezza",              start: 118, end: 145 },
+  { name: "Cuore",                      start: 146, end: 171 },
+  { name: "Mortificazione",             start: 172, end: 207 },
+  { name: "Penitenza",                  start: 208, end: 234 },
+  { name: "Esame",                      start: 235, end: 246 },
+  { name: "Propositi",                  start: 247, end: 257 },
+  { name: "Scrupoli",                   start: 258, end: 264 },
+  { name: "Presenza di Dio",            start: 265, end: 278 },
+  { name: "Vita soprannaturale",        start: 279, end: 300 },
+  { name: "Ancora vita interiore",      start: 301, end: 324 },
+  { name: "Tiepidezza",                 start: 325, end: 331 },
+  { name: "Studio",                     start: 332, end: 359 },
+  { name: "Formazione",                 start: 360, end: 386 },
+  { name: "Il piano della tua santità", start: 387, end: 416 },
+  { name: "Amore di Dio",               start: 417, end: 439 },
+  { name: "Carità",                     start: 440, end: 469 },
+  { name: "I mezzi",                    start: 470, end: 491 },
+  { name: "La Vergine",                 start: 492, end: 516 },
+  { name: "La Chiesa",                  start: 517, end: 527 },
+  { name: "Santa Messa",                start: 528, end: 543 },
+  { name: "Comunione dei Santi",        start: 544, end: 550 },
+  { name: "Devozioni",                  start: 551, end: 574 },
+  { name: "Fede",                       start: 575, end: 588 },
+  { name: "Umiltà",                     start: 589, end: 613 },
+  { name: "Obbedienza",                 start: 614, end: 629 },
+  { name: "Povertà",                    start: 630, end: 638 },
+  { name: "Discrezione",                start: 639, end: 656 },
+  { name: "Allegria",                   start: 657, end: 666 },
+  { name: "Altre virtù",                start: 667, end: 684 },
+  { name: "Tribolazione",               start: 685, end: 706 },
+  { name: "Lotta interiore",            start: 707, end: 733 },
+  { name: "Novissimi",                  start: 734, end: 753 },
+  { name: "La volontà di Dio",          start: 754, end: 778 },
+  { name: "La gloria di Dio",           start: 779, end: 789 },
+  { name: "Proselitismo",               start: 790, end: 812 },
+  { name: "Cose piccole",               start: 813, end: 830 },
+  { name: "Tattica",                    start: 831, end: 851 },
+  { name: "Infanzia spirituale",        start: 852, end: 874 },
+  { name: "Vita d'infanzia",            start: 875, end: 901 },
+  { name: "Chiamata",                   start: 902, end: 928 },
+  { name: "L'apostolo",                 start: 929, end: 959 },
+  { name: "L'apostolato",               start: 960, end: 982 },
+  { name: "Perseveranza",               start: 983, end: 999 },
+];
+ 
+// ═══════════════════════════════════════════════════
+//  GENERAZIONE GRUPPI GIORNALIERI
+//
+//  Regola intelligente per i resti non divisibili per 5:
+//  • resto 0       → gruppi esatti da 5
+//  • resto 1       → ultimo gruppo da 6  (evita un giorno con 1 solo punto)
+//  • resto 2       → ultimo gruppo da 7  (evita un giorno con 2 soli punti)
+//  • resto 3 o 4   → ultimo gruppo da 3 o 4 (accettabile)
+// ═══════════════════════════════════════════════════
+function generateBatches() {
+  const batches = [];
+  for (const ch of CHAPTERS) {
+    const total = ch.end - ch.start + 1;
+    const full  = Math.floor(total / 5);
+    const rem   = total % 5;
+ 
+    let sizes;
+    if (rem === 0) {
+      sizes = Array(full).fill(5);
+    } else if (rem === 1) {
+      // es. 11 punti → [5, 6]
+      sizes = full > 0 ? [...Array(full - 1).fill(5), 6] : [1];
+    } else if (rem === 2) {
+      // es. 7 punti → [7] | 12 punti → [5, 7] | 37 punti → [5,5,5,5,5,5,7]
+      sizes = full > 0 ? [...Array(full - 1).fill(5), 7] : [2];
+    } else {
+      // rem = 3 o 4 — giorno più breve ma leggibile
+      sizes = [...Array(full).fill(5), rem];
+    }
+ 
+    let ptr = ch.start;
+    for (const size of sizes) {
+      const points = [];
+      for (let i = 0; i < size; i++) points.push(ptr + i);
+      batches.push({ chapter: ch.name, points });
+      ptr += size;
     }
   }
-
-  return result;
+  return batches;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   FALLBACK CSS: usato solo se extractFromH1 fallisce
-   ═══════════════════════════════════════════════════════════════ */
-function findContentEl(doc) {
-  const selectors = [
-    '.entry-content', '.post-entry', '.post-content',
-    '.page-content',  '.single-content', 'main article', 'article', 'main'
-  ];
-  for (const s of selectors) {
-    const el = doc.querySelector(s);
-    if (el && el.textContent.trim().length > 300) return el;
-  }
-  return doc.body;
+ 
+const BATCHES     = generateBatches();
+const TOTAL_DAYS  = BATCHES.length;   // ~197 giorni
+ 
+// ═══════════════════════════════════════════════════
+//  NAVIGAZIONE — offset da oggi (0 = oggi)
+// ═══════════════════════════════════════════════════
+let dayOffset = 0;
+ 
+function getTodayBatchIndex() {
+  // Giorno 0 = 1 Gennaio 2025, poi avanza in ciclo
+  const epoch = new Date(2025, 0, 1);
+  const now   = new Date();
+  const days  = Math.floor((now - epoch) / 86400000);
+  return ((days % TOTAL_DAYS) + TOTAL_DAYS) % TOTAL_DAYS;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   PULIZIA ELEMENTI NON TESTUALI
-   ═══════════════════════════════════════════════════════════════
-
-   NOTA: non rimuoviamo nav/header/footer/aside per selettore tag,
-   perché extractFromH1 esclude già a monte tutto ciò che precede
-   l'h1 (navigazione, breadcrumb). Rimuoverli qui causerebbe falsi
-   positivi se il sito CEI usasse quei tag per wrappare contenuto
-   liturgico legittimo.
-   ═══════════════════════════════════════════════════════════════ */
-function cleanEl(el) {
-  const cssToRemove = [
-    'img', 'figure', 'picture', 'video', 'iframe', 'script', 'style', 'noscript',
-    '[class*="share"]', '[class*="social"]', '[class*="grandezza"]',
-    '.addtoany_share_save_container', '.a2a_kit', '.wp-block-buttons',
-    'a[href*="facebook"]', 'a[href*="twitter"]', 'a[href*="mailto"]',
-    'a[href="#"]', '.breadcrumb', '.breadcrumbs'
-  ];
-  cssToRemove.forEach(s => {
-    try { el.querySelectorAll(s).forEach(e => e.remove()); } catch(_) {}
-  });
-
-  // Rimozione per testo esatto: bottoni e label UI non liturgici
-  const skipTexts = [
-    'Grandezza Testo', 'Condividi', 'Invia', 'Stampa',
-    'Facebook', 'Twitter', 'Torna ai risultati',
-    'Lettura a schermo intero', 'Chiudi mappa', 'Home'
-  ];
-  Array.from(el.querySelectorAll('p, div, span, a, li, button'))
-    .reverse()
-    .forEach(e => {
-      const t = e.textContent.trim();
-      if (skipTexts.some(u => t === u) || /^A\s+A\s+A$/.test(t)) e.remove();
-    });
+ 
+function getCurrentBatchIndex() {
+  return ((getTodayBatchIndex() + dayOffset) % TOTAL_DAYS + TOTAL_DAYS) % TOTAL_DAYS;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   RIMOZIONE ALTERNATIVE (Oppure:)
-   ═══════════════════════════════════════════════════════════════
-
-   Versione corretta rispetto alla precedente.
-
-   Il bug precedente: nextSectionPat conteneva solo pattern testuali
-   tipici della Liturgia delle Ore ("1 ant.", "SALMO", ecc.) e non
-   conosceva le sezioni della Messa ("Vangelo", "Sulle offerte",
-   "Dopo la comunione"). Di conseguenza, quando incontrava "Oppure:"
-   nel Salmo Responsoriale della Messa, rimuoveva tutto fino alla
-   fine della pagina — lasciando solo la data prima dell'h1.
-
-   La correzione: si ferma al primo ELEMENTO HEADING (h2, h3, h4, h5)
-   incontrato dopo "Oppure:". Questo funziona per entrambe le strutture:
-   - Messa del Giorno: le sezioni sono in h2/h3 → stop immediato
-   - Liturgia delle Ore: le sezioni sono in testo piano → si usa
-     textSectionPat come secondo criterio di stop
-   ═══════════════════════════════════════════════════════════════ */
-function removeAlternatives(el) {
-  // Pattern testuali per sezioni della Liturgia delle Ore
-  const textSectionPat = /^(\d+\s*ant\.|SALMO\b|CANTICO\b|INNO\b|ANT\.|Ant\.|PRIMA\s+LETTURA|SECONDA\s+LETTURA|RESPONSORIO|ORAZIONE\b)/i;
-
-  // Trova tutti gli elementi foglia con testo esattamente "Oppure:" o "Oppure"
-  // (children.length === 0 = nessun elemento figlio = è un nodo foglia)
-  const oppureEls = Array.from(el.querySelectorAll('*'))
-    .filter(e => {
-      const t = e.textContent.trim();
-      return (t === 'Oppure:' || t === 'Oppure') && e.children.length === 0;
-    })
-    .reverse(); // dal fondo per non invalidare i riferimenti DOM
-
-  for (const leaf of oppureEls) {
-    const top = topChild(leaf, el);
-    if (!top) continue;
-
-    const toRemove = [top];
-    let sib = top.nextElementSibling;
-
-    while (sib) {
-      // STOP CRITERIO 1: heading HTML (h2, h3, h4, h5)
-      // Gestisce la struttura della Messa del Giorno, dove ogni sezione
-      // (Antifona, Colletta, Vangelo, ecc.) è avvolta in un h2/h3.
-      if (/^H[2-5]$/.test(sib.tagName)) break;
-
-      // STOP CRITERIO 2: pattern testuale della Liturgia delle Ore
-      // Gestisce sezioni come "1 ant.", "SALMO", "Ant.", ecc.
-      const t = (sib.textContent || '').trim();
-      if (textSectionPat.test(t)) break;
-
-      toRemove.push(sib);
-      sib = sib.nextElementSibling;
-    }
-
-    toRemove.forEach(n => n.remove());
-  }
+ 
+function navigate(dir) {
+  dayOffset += dir;
+  loadDay();
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   RIMOZIONE SECONDA OPZIONE (Messa del Giorno)
-   ═══════════════════════════════════════════════════════════════
-
-   La pagina Messa del Giorno può includere più opzioni celebrative:
-   prima la Messa del giorno feriale/festivo, poi le Memorie
-   facoltative dei santi. Mostriamo solo la prima opzione.
-
-   Le Memorie facoltative sono segnalate da un heading h3/h4
-   contenente "MEMORIA FACOLTATIVA" o "MEMORIA PRINCIPALE".
-   Tutto da quel punto in poi viene rimosso.
-
-   Poiché extractFromH1 restituisce un div con tutti i figli
-   come FIGLI DIRETTI (non annidati), possiamo usare l'iterazione
-   sui childNodes diretti — molto più semplice e affidabile.
-   ═══════════════════════════════════════════════════════════════ */
-function removeSecondMassOption(el) {
-  let removing = false;
-  Array.from(el.children).forEach(child => {
-    if (removing) { child.remove(); return; }
-    if (
-      /^H[2-5]$/.test(child.tagName) &&
-      /MEMORIA\s+(FACOLTATIVA|PRINCIPALE)/i.test(child.textContent.trim())
-    ) {
-      removing = true;
-      child.remove();
-    }
-  });
+ 
+function goToToday() {
+  dayOffset = 0;
+  loadDay();
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   ESTRAZIONE PRIMA E SECONDA LETTURA (Ufficio delle letture)
-   ═══════════════════════════════════════════════════════════════ */
-function extractLetture(contentEl) {
-  // Cerca un elemento foglia (nessun figlio, testo breve) che corrisponde
-  // al titolo della lettura. Il testo < 80 char esclude elementi che
-  // contengono più di una riga (es. paragrafi del testo biblico).
-  function findLeaf(pattern) {
-    return Array.from(contentEl.querySelectorAll('*')).find(e =>
-      e.children.length === 0 &&
-      e.textContent.trim().length < 80 &&
-      pattern.test(e.textContent.trim())
-    );
-  }
-
-  const primaLeaf   = findLeaf(/PRIMA\s+LETTURA/i);
-  const secondaLeaf = findLeaf(/SECONDA\s+LETTURA/i);
-
-  // Se non troviamo i marcatori → fallback: mostra tutto il contenuto
-  if (!primaLeaf && !secondaLeaf) return contentEl;
-
-  const primaTop  = primaLeaf  ? topChild(primaLeaf,  contentEl) : null;
-  const secondaTop = secondaLeaf ? topChild(secondaLeaf, contentEl) : null;
-
-  // Pattern che segnalano la fine della Seconda Lettura
-  const endPat = /^(TE\s+DEUM|BREVE\s+RESPONSORIO|RESPONSORIO\b|ORAZIONE\b|CONCLUSIONE|LAUDI)/i;
-
-  const result  = document.createElement('div');
-  let mode      = null;
-  let section   = null;
-
-  for (const child of Array.from(contentEl.childNodes)) {
-    const isOrContains = (leaf, top) =>
-      leaf && top &&
-      (child === top || (typeof child.contains === 'function' && child.contains(leaf)));
-
-    if (isOrContains(primaLeaf, primaTop)) {
-      mode = 'prima';
-      section = document.createElement('div');
-      section.className = 'lettura-section';
-      result.appendChild(section);
-      if (child.nodeType === Node.ELEMENT_NODE) section.appendChild(child.cloneNode(true));
-      continue;
-    }
-    if (isOrContains(secondaLeaf, secondaTop)) {
-      result.appendChild(document.createElement('hr'));
-      mode = 'seconda';
-      section = document.createElement('div');
-      section.className = 'lettura-section';
-      result.appendChild(section);
-      if (child.nodeType === Node.ELEMENT_NODE) section.appendChild(child.cloneNode(true));
-      continue;
-    }
-    if (mode === 'seconda' && child.nodeType === Node.ELEMENT_NODE) {
-      if (endPat.test((child.textContent || '').trim())) break;
-    }
-    if (mode && section) {
-      if (child.nodeType === Node.ELEMENT_NODE ||
-         (child.nodeType === Node.TEXT_NODE && child.textContent.trim())) {
-        section.appendChild(child.cloneNode(true));
-      }
-    }
-  }
-
-  return result.childElementCount > 0 ? result : contentEl;
+ 
+// ═══════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════
+function capitalise(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   STILI SEMANTICI POST-RENDERING
-   ═══════════════════════════════════════════════════════════════ */
-function applySemanticStyles(container) {
-  // Rubrica (V. R. Ant.): colore rosso tradizionale
-  const rubricPat = /^(V\.|R\.|Ant\.|Sal\.|Rit\.)$/;
-  container.querySelectorAll('p').forEach(p => {
-    if (rubricPat.test(p.textContent.trim())) p.classList.add('rubric');
-  });
-
-  // Sottotitolo liturgico (settimana, solennità, ecc.): testo piccolo maiuscolo
-  const firstP = container.querySelector('p:not(.rubric)');
-  if (firstP) {
-    const t = firstP.textContent.trim();
-    if (t.length < 120 && /SETTIMANA|SOLENNIT|DOMENICA|FESTA|VENERD|LUNED|MARTED|MERCOLED|GIOVED|SABATO/i.test(t))
-      firstP.classList.add('liturgy-subtitle');
-  }
+ 
+function formatDate(d) {
+  return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   PIPELINE DI ESTRAZIONE COMPLETA
-   ═══════════════════════════════════════════════════════════════ */
-function extractContent(rawHtml, tab) {
-  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
-
-  // 1. Estrazione primaria via H1-boundary (più robusta)
-  let content = extractFromH1(doc, tab);
-
-  // 2. Fallback CSS se l'h1 non è stato trovato o il risultato è scarso
-  if (!content || content.textContent.trim().length < 200) {
-    const fallback = findContentEl(doc);
-    content = document.createElement('div');
-    // cloneNode garantisce che lavoriamo su un sottoalbero isolato
-    Array.from(fallback.childNodes).forEach(n => content.appendChild(n.cloneNode(true)));
-  }
-
-  // 3. Pulizia elementi di UI non liturgici
-  cleanEl(content);
-
-  // 4. Rimozione sezioni alternative (Oppure:) — tutti i tab
-  removeAlternatives(content);
-
-  // 5. Lavorazione specifica per tab
-  if (tab === 'messa')   removeSecondMassOption(content);
-  if (tab === 'ufficio') return extractLetture(content);
-
-  return content;
+ 
+function esc(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   GESTIONE UI
-   ═══════════════════════════════════════════════════════════════ */
-const elLoading = document.getElementById('state-loading');
-const elError   = document.getElementById('state-error');
-const elLiturgy = document.getElementById('liturgy');
-const elDate    = document.getElementById('header-date');
-const elTitle   = document.getElementById('header-title');
-
+ 
+// ═══════════════════════════════════════════════════
+//  RENDERING
+// ═══════════════════════════════════════════════════
 function showLoading() {
-  elLoading.style.display = '';
-  elError.style.display   = 'none';
-  elLiturgy.style.display = 'none';
+  document.getElementById('content').innerHTML = `
+    <div class="state-box">
+      <div class="spinner"></div>
+      <p>Caricamento in corso…</p>
+    </div>`;
 }
-
-function showContent(node) {
-  elLoading.style.display = 'none';
-  elError.style.display   = 'none';
-  elLiturgy.innerHTML     = '';
-
-  if (typeof node === 'string') {
-    elLiturgy.innerHTML = node;
-  } else {
-    elLiturgy.appendChild(node);
-  }
-
-  // Applica stili semantici dopo l'inserimento nel DOM
-  applySemanticStyles(elLiturgy);
-
-  // FIX: usare 'block' e non '' — impostare '' rimuove lo stile inline
-  // e cede il controllo al CSS, che ha display:none su #liturgy.
-  elLiturgy.style.display = 'block';
-
-  // Torna in cima alla pagina ad ogni cambio di tab
-  document.getElementById('scroll-area').scrollTop = 0;
+ 
+function showError() {
+  document.getElementById('content').innerHTML = `
+    <div class="state-box">
+      <p>Impossibile caricare i punti.<br>Controlla la connessione.</p>
+      <button class="retry-btn" onclick="loadDay()">⟳ Riprova</button>
+    </div>`;
 }
-
-function showError(msg, url) {
-  elLoading.style.display = 'none';
-  elLiturgy.style.display = 'none';
-  elError.innerHTML = `
-    <strong>Errore nel caricamento</strong>
-    ${msg}
-    <br><br>
-    <a href="${url}" target="_blank" rel="noopener noreferrer">Apri il sito originale →</a>
-  `;
-  // FIX: stesso motivo — 'block' esplicito, non '' che lascerebbe
-  // il controllo al CSS (display:none su #state-error).
-  elError.style.display = 'block';
+ 
+function renderPoints(fetched, expectedNums) {
+  const map = {};
+  for (const p of fetched) map[p.number] = p.text;
+ 
+  const html = expectedNums.map(num => {
+    const text = map[num] || `(Punto ${num} non disponibile)`;
+    return `
+      <div class="point-card">
+        <div class="point-num">${num}</div>
+        <div class="point-body">
+          <p class="point-text">${esc(text)}</p>
+        </div>
+      </div>`;
+  }).join('');
+ 
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('content').scrollTop = 0;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   TITOLI DEI TAB
-   ═══════════════════════════════════════════════════════════════ */
-const TAB_TITLES = {
-  vespri:  'Vespri',
-  messa:   'Messa del Giorno',
-  ufficio: "Letture dell'Ufficio"
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   RENDER PRINCIPALE
-   ═══════════════════════════════════════════════════════════════ */
-async function renderTab(tab) {
+ 
+// ═══════════════════════════════════════════════════
+//  CARICAMENTO PRINCIPALE
+// ═══════════════════════════════════════════════════
+async function loadDay() {
+  const batchIdx = getCurrentBatchIndex();
+  const batch    = BATCHES[batchIdx];
+ 
+  // Header
+  const displayDate = new Date();
+  displayDate.setDate(displayDate.getDate() + dayOffset);
+  document.getElementById('date-line').textContent    = capitalise(formatDate(displayDate));
+  document.getElementById('chapter-name').textContent = batch.chapter;
+  document.getElementById('badge-day').textContent    = `Giorno ${batchIdx + 1}`;
+ 
+  // Progress
+  const pct = Math.round(((batchIdx + 1) / TOTAL_DAYS) * 100);
+  document.getElementById('progress-fill').style.width  = pct + '%';
+  document.getElementById('progress-label').textContent = `${batchIdx + 1} / ${TOTAL_DAYS} giorni`;
+ 
+  // Pulsante "vai ad oggi"
+  const todayBtn = document.getElementById('today-btn');
+  todayBtn.style.display = dayOffset !== 0 ? 'inline-block' : 'none';
+ 
   showLoading();
-  elTitle.textContent = TAB_TITLES[tab];
-
-  const ds = getDateStr();
-  elDate.textContent = formatDateLabel(ds);
-
+ 
   try {
-    const rawHtml = await fetchPage(tab, ds);
-    const contentNode = extractContent(rawHtml, tab);
-    showContent(contentNode);
-  } catch (err) {
-    showError(err.message, buildUrl(tab, ds));
+    const url = `${WORKER_URL}?points=${batch.points.join(',')}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.points) throw new Error('Bad response');
+    renderPoints(data.points, batch.points);
+  } catch (e) {
+    console.error(e);
+    showError();
   }
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   NAVIGAZIONE TRA TAB
-   ═══════════════════════════════════════════════════════════════ */
-function switchTab(tab) {
-  if (tab === activeTab) return; // già attivo, nessuna azione
-  activeTab = tab;
-
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-
-  renderTab(tab);
-}
-
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   AVVIO
-   Mostra i Vespri come schermata iniziale predefinita.
-   ═══════════════════════════════════════════════════════════════ */
-switchTab('vespri');
+ 
+// Avvio
+loadDay();
 </script>
 </body>
 </html>
+ 
