@@ -1,13 +1,6 @@
-// SBAGLIATO (Il mio testo di esempio tagliato) ❌
-{
-  "capitolo": "Carattere",
-  "numero": 1,
-  "testo": "Non sia la tua vita una vita sterile. — Sii utile. — Lascia traccia..."
-}
-
-// CORRETTO (Testo integrale) ✅
-{
-  "capitolo": "Carattere",
-  "numero": 1,
-  "testo": "Non sia la tua vita una vita sterile. — Sii utile. — Lascia traccia. — Illumina con la fiamma della tua fede e del tuo amore. Cancella, con la tua vita d'apostolo, l'impronta viscida e sudicia lasciata dai seminatori impuri dell'odio. — E incendia tutti i cammini della terra con il fuoco di Cristo che porti nel cuore."
-}
+[
+  { "capitolo": "Carattere", "numero": 1, "testo": "Non sia la tua vita una vita sterile. — Sii utile. — Lascia traccia. — Illumina con la fiamma della tua fede e del tuo amore. Cancella, con la tua vita d'apostolo, l'impronta viscida e sudicia lasciata dai seminatori impuri dell'odio. — E incendia tutti i cammini della terra con il fuoco di Cristo che porti nel cuore." },
+  { "capitolo": "Carattere", "numero": 2, "testo": "Fossi come molti che cambiano facilmente parere..." },
+  { "capitolo": "Carattere", "numero": 52, "testo": "Ultimo punto di esempio del capitolo uno..." },
+  { "capitolo": "Direzione", "numero": 1, "testo": "Primo punto del capitolo due..." }
+]
